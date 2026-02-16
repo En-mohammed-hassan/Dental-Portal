@@ -12,7 +12,15 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const search = url.searchParams.get("search") ?? undefined
   const data = await listPatients(search)
-  return NextResponse.json({ data })
+  return NextResponse.json(
+    { data },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, max-age=0",
+      },
+    }
+  )
 }
 
 export async function POST(request: Request) {

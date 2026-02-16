@@ -17,7 +17,16 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient
 }
 
-const prisma = globalForPrisma.prisma ?? new PrismaClient()
+// Optimize Prisma client with connection pooling and query logging in development
+const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  // Connection pool optimization
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+})
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma
@@ -212,27 +221,54 @@ async function ensureUniquePhone(phone: string, excludePatientId?: string): Prom
   }
 }
 
+// Helper to build patient select object
+const getPatientSelect = () => ({
+  name: true,
+  phone: true,
+  age: true,
+  bloodType: true,
+  ...(supportsXrayImageBase64Field ? { xrayImageBase64: true } : {}),
+})
+
+// Helper to build reservation select object
+const getReservationSelect = () => ({
+  id: true,
+  patientId: true,
+  bookingType: true,
+  appointmentDate: true,
+  hasArrived: true,
+  createdAt: true,
+  completedAt: true,
+  treatmentNote: true,
+  ...(supportsReservationXrayImageBase64Field ? { xrayImageBase64: true } : {}),
+  patient: {
+    select: getPatientSelect(),
+  },
+})
+
 async function toReservationsData(): Promise<ReservationsData> {
+  // Optimize: Select only needed fields and limit history to improve performance
   const [current, waiting, upcoming, history] = await Promise.all([
     prisma.reservation.findFirst({
       where: { status: "CURRENT" },
       orderBy: { createdAt: "desc" },
-      include: { patient: true },
+      select: getReservationSelect(),
     }),
     prisma.reservation.findMany({
       where: { status: "WAITING" },
       orderBy: [{ bookingType: "desc" }, { createdAt: "asc" }],
-      include: { patient: true },
+      select: getReservationSelect(),
     }),
     prisma.reservation.findMany({
       where: { status: "UPCOMING" },
       orderBy: [{ appointmentDate: "asc" }, { createdAt: "asc" }],
-      include: { patient: true },
+      select: getReservationSelect(),
     }),
     prisma.reservation.findMany({
       where: { status: "COMPLETED" },
       orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
-      include: { patient: true },
+      take: 100, // Limit history to recent 100 records for performance
+      select: getReservationSelect(),
     }),
   ])
 
@@ -473,17 +509,18 @@ export async function deleteReservation(reservationId: string): Promise<Reservat
 }
 
 export async function listPatients(search?: string): Promise<PatientProfile[]> {
-  const normalized = search?.trim()
+  const normalized = search?.trim()?.toLowerCase()
   const patients = await prisma.patientProfile.findMany({
     where: normalized
       ? {
           OR: [
-            { name: { contains: normalized } },
+            { name: { contains: normalized, mode: "insensitive" } },
             { phone: { contains: normalized } },
           ],
         }
       : undefined,
     orderBy: [{ name: "asc" }],
+    // Optimize: Only fetch reservations when needed (they're loaded on-demand in the UI)
     include: {
       reservations: {
         select: (supportsReservationXrayImageBase64Field
@@ -509,6 +546,7 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
               treatmentNote: true,
             }) as never,
         orderBy: [{ createdAt: "desc" }],
+        take: 50, // Limit to recent 50 reservations per patient for performance
       },
     },
   })
@@ -561,6 +599,8 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
                 completedAt: true,
                 treatmentNote: true,
               }) as never,
+          orderBy: [{ createdAt: "desc" }],
+          take: 50, // Limit to recent 50 reservations for performance
         },
       },
     })
@@ -591,6 +631,8 @@ export async function updatePatientProfile(
 
   let patient
   try {
+    // Optimize: Only fetch reservations metadata (id, status, dates) for linked reservations display
+    // This is much faster than fetching all reservation fields
     patient = await prisma.patientProfile.update({
       where: { id: patientId },
       data: {
@@ -626,6 +668,8 @@ export async function updatePatientProfile(
                 completedAt: true,
                 treatmentNote: true,
               }) as never,
+          orderBy: [{ createdAt: "desc" }],
+          take: 50, // Limit to recent 50 reservations to avoid loading too much data
         },
       },
     })

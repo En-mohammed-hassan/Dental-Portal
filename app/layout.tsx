@@ -23,26 +23,7 @@ export default function RootLayout({
           {children}
           <Toaster
             position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: "hsl(var(--background))",
-                color: "hsl(var(--foreground))",
-                border: "1px solid hsl(var(--border))",
-              },
-              success: {
-                iconTheme: {
-                  primary: "hsl(var(--primary))",
-                  secondary: "hsl(var(--primary-foreground))",
-                },
-              },
-              error: {
-                iconTheme: {
-                  primary: "hsl(0, 84.2%, 60.2%)",
-                  secondary: "#fff",
-                },
-              },
-            }}
+           
           />
         </ThemeProvider>
       </body>

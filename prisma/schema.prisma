@@ -43,6 +43,7 @@ model PatientProfile {
   reservations    Reservation[]
 
   @@index([name])
+  // Note: phone already has unique index from @unique constraint
 }
 
 model Reservation {

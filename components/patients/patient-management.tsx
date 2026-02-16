@@ -166,7 +166,7 @@ export function PatientManagement() {
         body: JSON.stringify(values),
       })
 
-      const result = (await response.json()) as { message?: string }
+      const result = (await response.json()) as { data?: PatientProfile; message?: string }
       if (!response.ok) {
         const message = result.message ?? "Failed to save patient"
         setErrorMessage(message)
@@ -175,11 +175,26 @@ export function PatientManagement() {
         return
       }
 
+      // Optimize: Update local state instead of refetching all patients
+      if (editorMode === "edit" && result.data) {
+        // Update the patient in the local state
+        setPatients((prev) =>
+          prev.map((p) => (p.id === result.data!.id ? result.data! : p))
+        )
+        toast.success("Patient updated successfully")
+      } else if (editorMode === "create" && result.data) {
+        // Add new patient to the list (at the beginning)
+        setPatients((prev) => [result.data!, ...prev])
+        toast.success("Patient created successfully")
+      } else {
+        // Fallback: refetch if we don't have the data
+        await loadPatients()
+        toast.success(editorMode === "edit" ? "Patient updated successfully" : "Patient created successfully")
+      }
+
       form.reset(resetFormState())
       setSelectedPatient(null)
       setEditorOpen(false)
-      await loadPatients()
-      toast.success(editorMode === "edit" ? "Patient updated successfully" : "Patient created successfully")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save patient"
       setErrorMessage(message)
