@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { useEffect, useMemo, useState } from "react"
+import toast from "react-hot-toast"
 import { z } from "zod"
 
 import { Button } from "@/components/ui/button"
@@ -111,8 +112,16 @@ export function PatientFormDialog({
     setPatientsLoading(true)
     try {
       const response = await fetch("/api/patients")
+      if (!response.ok) {
+        const result = (await response.json()) as { message?: string }
+        throw new Error(result.message ?? "Failed to load patients")
+      }
       const data = (await response.json()) as { data?: PatientProfile[] }
       setAllPatients(data.data ?? [])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load patients"
+      toast.error(message)
+      setAllPatients([])
     } finally {
       setPatientsLoading(false)
     }
@@ -129,7 +138,9 @@ export function PatientFormDialog({
     try {
       if (patientMode === "existing") {
         if (!selectedPatientId) {
-          setInlineError("Please select a patient first.")
+          const message = "Please select a patient first."
+          setInlineError(message)
+          toast.error(message)
           return
         }
         await onSubmitReservation({
@@ -156,7 +167,9 @@ export function PatientFormDialog({
         })
       }
     } catch (error) {
-      setInlineError(error instanceof Error ? error.message : "Failed to save reservation")
+      const message = error instanceof Error ? error.message : "Failed to save reservation"
+      setInlineError(message)
+      toast.error(message)
       return
     }
     setOpen(false)

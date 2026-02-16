@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 
 import { startTreatment } from "@/lib/server/reservations-service"
 
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = "force-dynamic"
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }

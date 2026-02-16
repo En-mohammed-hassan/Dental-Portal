@@ -23,16 +23,33 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma
 }
 
-const supportsXrayImageBase64Field = Prisma.dmmf.datamodel.models.some(
-  (model) =>
-    model.name === "PatientProfile" &&
-    model.fields.some((field) => field.name === "xrayImageBase64")
-)
+// Safely check if fields are supported (handle cases where DMMF might not be available during build)
+function checkFieldSupport(modelName: string, fieldName: string): boolean {
+  try {
+    // Check if Prisma and DMMF are available
+    if (typeof Prisma === "undefined" || !Prisma.dmmf || !Prisma.dmmf.datamodel) {
+      // During build or when Prisma client isn't generated, assume fields exist
+      return true
+    }
+    return (
+      Prisma.dmmf.datamodel.models?.some(
+        (model) =>
+          model.name === modelName &&
+          model.fields.some((field) => field.name === fieldName)
+      ) ?? false
+    )
+  } catch {
+    // If DMMF is not available (e.g., during build), assume field exists if schema has it
+    // This is a safe default since the schema should be up to date
+    return true
+  }
+}
 
-const supportsReservationXrayImageBase64Field = Prisma.dmmf.datamodel.models.some(
-  (model) =>
-    model.name === "Reservation" &&
-    model.fields.some((field) => field.name === "xrayImageBase64")
+const supportsXrayImageBase64Field = checkFieldSupport("PatientProfile", "xrayImageBase64")
+
+const supportsReservationXrayImageBase64Field = checkFieldSupport(
+  "Reservation",
+  "xrayImageBase64"
 )
 
 // Debug: Log if field is supported (remove in production)
@@ -522,16 +539,28 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
       },
       include: {
         reservations: {
-          select: {
-            id: true,
-            bookingType: true,
-            status: true,
-            appointmentDate: true,
-            hasArrived: true,
-            createdAt: true,
-            completedAt: true,
-            treatmentNote: true,
-          },
+          select: (supportsReservationXrayImageBase64Field
+            ? {
+                id: true,
+                bookingType: true,
+                status: true,
+                appointmentDate: true,
+                hasArrived: true,
+                createdAt: true,
+                completedAt: true,
+                treatmentNote: true,
+                xrayImageBase64: true,
+              }
+            : {
+                id: true,
+                bookingType: true,
+                status: true,
+                appointmentDate: true,
+                hasArrived: true,
+                createdAt: true,
+                completedAt: true,
+                treatmentNote: true,
+              }) as never,
         },
       },
     })
@@ -545,7 +574,7 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
     throw error
   }
 
-  return mapPatientProfileFromDb(patient)
+  return mapPatientProfileFromDb(patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0])
 }
 
 export async function updatePatientProfile(
@@ -575,16 +604,28 @@ export async function updatePatientProfile(
       },
       include: {
         reservations: {
-          select: {
-            id: true,
-            bookingType: true,
-            status: true,
-            appointmentDate: true,
-            hasArrived: true,
-            createdAt: true,
-            completedAt: true,
-            treatmentNote: true,
-          },
+          select: (supportsReservationXrayImageBase64Field
+            ? {
+                id: true,
+                bookingType: true,
+                status: true,
+                appointmentDate: true,
+                hasArrived: true,
+                createdAt: true,
+                completedAt: true,
+                treatmentNote: true,
+                xrayImageBase64: true,
+              }
+            : {
+                id: true,
+                bookingType: true,
+                status: true,
+                appointmentDate: true,
+                hasArrived: true,
+                createdAt: true,
+                completedAt: true,
+                treatmentNote: true,
+              }) as never,
         },
       },
     })
@@ -598,7 +639,7 @@ export async function updatePatientProfile(
     throw error
   }
 
-  return mapPatientProfileFromDb(patient)
+  return mapPatientProfileFromDb(patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0])
 }
 
 export async function deletePatientProfile(patientId: string): Promise<void> {

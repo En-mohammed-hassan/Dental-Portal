@@ -5,6 +5,9 @@ import {
   listPatients,
 } from "@/lib/server/reservations-service"
 
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = "force-dynamic"
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const search = url.searchParams.get("search") ?? undefined

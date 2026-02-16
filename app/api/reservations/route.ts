@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 
 import { addReservation, getReservations } from "@/lib/server/reservations-service"
 
+// Force dynamic rendering to prevent build-time execution
+export const dynamic = "force-dynamic"
+
 export async function GET() {
   const data = await getReservations()
   return NextResponse.json({ data })

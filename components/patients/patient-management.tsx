@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion } from "framer-motion"
 import { type ChangeEvent, useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
+import toast from "react-hot-toast"
 import { z } from "zod"
 
 import {
@@ -114,8 +115,16 @@ export function PatientManagement() {
     setIsLoadingPatients(true)
     try {
       const response = await fetch(`/api/patients?search=${encodeURIComponent(search)}`)
+      if (!response.ok) {
+        const result = (await response.json()) as { message?: string }
+        throw new Error(result.message ?? "Failed to load patients")
+      }
       const data = (await response.json()) as { data?: PatientProfile[] }
       setPatients(data.data ?? [])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load patients"
+      toast.error(message)
+      setPatients([])
     } finally {
       setIsLoadingPatients(false)
     }
@@ -150,24 +159,34 @@ export function PatientManagement() {
         : "/api/patients"
     const method = editorMode === "edit" ? "PATCH" : "POST"
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    })
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      })
 
-    const result = (await response.json()) as { message?: string }
-    if (!response.ok) {
-      setErrorMessage(result.message ?? "Failed to save patient")
+      const result = (await response.json()) as { message?: string }
+      if (!response.ok) {
+        const message = result.message ?? "Failed to save patient"
+        setErrorMessage(message)
+        toast.error(message)
+        setIsSubmitting(false)
+        return
+      }
+
+      form.reset(resetFormState())
+      setSelectedPatient(null)
+      setEditorOpen(false)
+      await loadPatients()
+      toast.success(editorMode === "edit" ? "Patient updated successfully" : "Patient created successfully")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save patient"
+      setErrorMessage(message)
+      toast.error(message)
+    } finally {
       setIsSubmitting(false)
-      return
     }
-
-    form.reset(resetFormState())
-    setSelectedPatient(null)
-    setEditorOpen(false)
-    await loadPatients()
-    setIsSubmitting(false)
   }
 
   const handleXrayUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -176,12 +195,16 @@ export function PatientManagement() {
 
     setErrorMessage(null)
     if (!file.type.startsWith("image/")) {
-      setErrorMessage("Please choose a valid image file")
+      const message = "Please choose a valid image file"
+      setErrorMessage(message)
+      toast.error(message)
       return
     }
 
     if (file.size > MAX_XRAY_SIZE_BYTES) {
-      setErrorMessage("X-ray image must be 2MB or smaller")
+      const message = "X-ray image must be 2MB or smaller"
+      setErrorMessage(message)
+      toast.error(message)
       return
     }
 
@@ -191,8 +214,11 @@ export function PatientManagement() {
         shouldDirty: true,
         shouldValidate: true,
       })
+      toast.success("X-ray image uploaded successfully")
     } catch {
-      setErrorMessage("Failed to process image")
+      const message = "Failed to process image"
+      setErrorMessage(message)
+      toast.error(message)
     }
   }
 
@@ -200,18 +226,28 @@ export function PatientManagement() {
     if (!deletePatientId) return
     setErrorMessage(null)
     setIsDeleting(true)
-    const response = await fetch(`/api/patients/${deletePatientId}`, { method: "DELETE" })
-    const result = (await response.json()) as { message?: string }
+    try {
+      const response = await fetch(`/api/patients/${deletePatientId}`, { method: "DELETE" })
+      const result = (await response.json()) as { message?: string }
 
-    if (!response.ok) {
-      setErrorMessage(result.message ?? "Failed to delete patient")
+      if (!response.ok) {
+        const message = result.message ?? "Failed to delete patient"
+        setErrorMessage(message)
+        toast.error(message)
+        setIsDeleting(false)
+        return
+      }
+
+      setDeletePatientId(null)
+      await loadPatients()
+      toast.success("Patient deleted successfully")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete patient"
+      setErrorMessage(message)
+      toast.error(message)
+    } finally {
       setIsDeleting(false)
-      return
     }
-
-    setDeletePatientId(null)
-    await loadPatients()
-    setIsDeleting(false)
   }
 
   const openCreate = () => {

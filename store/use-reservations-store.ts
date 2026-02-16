@@ -1,6 +1,7 @@
 "use client"
 
 import { create } from "zustand"
+import toast from "react-hot-toast"
 
 import { type NewReservationInput, type Patient } from "@/types/patient"
 import { type ReservationsApiResponse } from "@/types/reservations"
@@ -71,11 +72,13 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         errorMessage: null,
       })
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load reservations"
       set({
         isLoading: false,
         hasHydrated: true,
-        errorMessage: error instanceof Error ? error.message : "Failed to load reservations",
+        errorMessage: message,
       })
+      toast.error(message)
     }
   },
   addReservation: async (payload) => {
@@ -86,6 +89,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         body: JSON.stringify(payload),
       })
       set({ ...response.data, errorMessage: null })
+      toast.success("Reservation added successfully")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add reservation"
+      set({ errorMessage: message })
+      toast.error(message)
+      throw error
     } finally {
       set({ isProcessing: false })
     }
@@ -97,6 +106,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         method: "POST",
       })
       set({ ...response.data, errorMessage: null })
+      toast.success("Patient marked as arrived")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to mark patient as arrived"
+      set({ errorMessage: message })
+      toast.error(message)
+      throw error
     } finally {
       set({ isProcessing: false })
     }
@@ -109,12 +124,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         body: JSON.stringify({ replaceCurrent }),
       })
       set({ ...response.data, errorMessage: null })
+      toast.success("Treatment started successfully")
       return true
     } catch (error) {
-      set({
-        errorMessage:
-          error instanceof Error ? error.message : "Failed to start treatment",
-      })
+      const message = error instanceof Error ? error.message : "Failed to start treatment"
+      set({ errorMessage: message })
+      toast.error(message)
       return false
     } finally {
       set({ isProcessing: false })
@@ -128,12 +143,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         body: JSON.stringify({ treatmentNote, xrayImageBase64: xrayImageBase64 ?? null }),
       })
       set({ ...response.data, errorMessage: null })
+      toast.success("Treatment completed successfully")
       return true
     } catch (error) {
-      set({
-        errorMessage:
-          error instanceof Error ? error.message : "Failed to finish treatment",
-      })
+      const message = error instanceof Error ? error.message : "Failed to finish treatment"
+      set({ errorMessage: message })
+      toast.error(message)
       return false
     } finally {
       set({ isProcessing: false })
@@ -146,12 +161,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         method: "DELETE",
       })
       set({ ...response.data, errorMessage: null })
+      toast.success("Reservation cancelled successfully")
       return true
     } catch (error) {
-      set({
-        errorMessage:
-          error instanceof Error ? error.message : "Failed to cancel reservation",
-      })
+      const message = error instanceof Error ? error.message : "Failed to cancel reservation"
+      set({ errorMessage: message })
+      toast.error(message)
       return false
     } finally {
       set({ isProcessing: false })
@@ -167,12 +182,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         }
       )
       set({ ...response.data, errorMessage: null })
+      toast.success("Reservation deleted successfully")
       return true
     } catch (error) {
-      set({
-        errorMessage:
-          error instanceof Error ? error.message : "Failed to delete reservation",
-      })
+      const message = error instanceof Error ? error.message : "Failed to delete reservation"
+      set({ errorMessage: message })
+      toast.error(message)
       return false
     } finally {
       set({ isProcessing: false })
