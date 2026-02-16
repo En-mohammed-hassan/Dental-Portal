@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingType {
+  ADVANCE
+  WALK_IN
+  EMERGENCY
+}
+
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+enum ReservationStatus {
+  CURRENT
+  WAITING
+  UPCOMING
+  COMPLETED
+}
+
+model PatientProfile {
+  id              String        @id @default(cuid())
+  name            String
+  phone           String        @unique
+  age             Int
+  bloodType       BloodType
+  xrayImageBase64 String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  reservations    Reservation[]
+
+  @@index([name])
+}
+
+model Reservation {
+  id              String            @id @default(cuid())
+  patientId       String
+  bookingType     BookingType
+  appointmentDate DateTime
+  hasArrived      Boolean           @default(false)
+  status          ReservationStatus
+  completedAt     DateTime?
+  treatmentNote   String?
+  xrayImageBase64 String?
+  createdAt       DateTime          @default(now())
+  patient         PatientProfile    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([appointmentDate])
+  @@index([bookingType])
+  @@index([patientId])
+}
