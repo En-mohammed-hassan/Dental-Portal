@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
 import {
   createPatientProfile,
   listPatients,
@@ -8,11 +9,16 @@ import {
 // Force dynamic rendering to prevent build-time execution
 export const dynamic = "force-dynamic"
 
+// Handle CORS preflight requests
+export async function OPTIONS(request: Request) {
+  return handleCorsPreflight(request)
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const search = url.searchParams.get("search") ?? undefined
   const data = await listPatients(search)
-  return NextResponse.json(
+  const response = NextResponse.json(
     { data },
     {
       headers: {
@@ -21,15 +27,18 @@ export async function GET(request: Request) {
       },
     }
   )
+  return addCorsHeaders(response, request)
 }
 
 export async function POST(request: Request) {
   try {
     const payload = await request.json()
     const data = await createPatientProfile(payload)
-    return NextResponse.json({ data }, { status: 201 })
+    const response = NextResponse.json({ data }, { status: 201 })
+    return addCorsHeaders(response, request)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create patient"
-    return NextResponse.json({ message }, { status: 400 })
+    const response = NextResponse.json({ message }, { status: 400 })
+    return addCorsHeaders(response, request)
   }
 }
