@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
+import { requireStaffApi } from "@/lib/api/require-staff"
 import {
   createPatientProfile,
   listPatients,
@@ -15,6 +16,10 @@ export async function OPTIONS(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const denied = await requireStaffApi()
+  if (denied) {
+    return addCorsHeaders(denied, request)
+  }
   const url = new URL(request.url)
   const search = url.searchParams.get("search") ?? undefined
   const data = await listPatients(search)
@@ -32,6 +37,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const denied = await requireStaffApi()
+    if (denied) {
+      return addCorsHeaders(denied, request)
+    }
     const payload = await request.json()
     const data = await createPatientProfile(payload)
     const response = NextResponse.json({ data }, { status: 201 })

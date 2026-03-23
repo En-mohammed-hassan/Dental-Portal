@@ -1,6 +1,7 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
+import { Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { PatientCard } from "@/components/reservations/patient-card"
@@ -17,11 +18,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { TeethTreatedPicker } from "@/components/dental/teeth-treated-picker"
+import { BookingTypeFilterSelect } from "@/components/ui/booking-type-filter"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useReservationsStore } from "@/store/use-reservations-store"
-import { type BookingType } from "@/types/patient"
+import { type BookingType, type PaymentStatusLabel } from "@/types/patient"
 
 const listAnimation = {
   initial: { opacity: 0, y: 12 },
@@ -55,6 +66,11 @@ export function ReservationsPageContent() {
   const [treatmentNote, setTreatmentNote] = useState("")
   const [xrayImageBase64, setXrayImageBase64] = useState<string | null>(null)
   const [xrayPreview, setXrayPreview] = useState<string | null>(null)
+  const [feeInput, setFeeInput] = useState("")
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusLabel | "none">("none")
+  const [canalsCount, setCanalsCount] = useState(0)
+  const [teethTreated, setTeethTreated] = useState<string[]>([])
+  const [procedureSummary, setProcedureSummary] = useState("")
 
   useEffect(() => {
     void hydrate()
@@ -119,7 +135,26 @@ export function ReservationsPageContent() {
   }
 
   const handleFinishTreatment = async () => {
-    const ok = await finishTreatment(treatmentNote, xrayImageBase64)
+    const feeTrim = feeInput.trim()
+    let feeCents: number | null = null
+    if (feeTrim) {
+      const n = Number.parseFloat(feeTrim.replace(",", "."))
+      if (!Number.isFinite(n) || n < 0) {
+        setFeedbackDialogMessage("Fee must be a valid positive number.")
+        return
+      }
+      feeCents = Math.round(n * 100)
+    }
+
+    const ok = await finishTreatment({
+      treatmentNote,
+      xrayImageBase64,
+      feeCents,
+      paymentStatus: paymentStatus === "none" ? null : paymentStatus,
+      canalsCount,
+      teethTreated: teethTreated.length ? teethTreated : null,
+      procedureSummary: procedureSummary.trim() || null,
+    })
     if (!ok) {
       setFeedbackDialogMessage(
         useReservationsStore.getState().errorMessage ??
@@ -131,6 +166,11 @@ export function ReservationsPageContent() {
     setTreatmentNote("")
     setXrayImageBase64(null)
     setXrayPreview(null)
+    setFeeInput("")
+    setPaymentStatus("none")
+    setCanalsCount(0)
+    setTeethTreated([])
+    setProcedureSummary("")
   }
 
   const handleXrayUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,7 +205,7 @@ export function ReservationsPageContent() {
   }
 
   return (
-    <>
+    <div className="space-y-8 pb-4">
       <header className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -186,29 +226,36 @@ export function ReservationsPageContent() {
         />
       </header>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Input
-          disabled={isLoading || isProcessing}
-          onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="Search by name or phone"
-          value={searchTerm}
-        />
-        <select
-          className="ui-select"
-          disabled={isLoading || isProcessing}
-          onChange={(event) =>
-            setFilterType((event.target.value || "all") as BookingType | "all")
-          }
-          value={filterType}
-        >
-          <option value="all">All Booking Types</option>
-          <option value="advance">Advance</option>
-          <option value="walk-in">Walk-in</option>
-          <option value="emergency">Emergency</option>
-        </select>
+      <section
+        aria-label="Queue filters"
+        className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200/80 bg-white/60 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 md:grid-cols-2 md:items-end"
+      >
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground text-xs" htmlFor="queue-search">
+            Search
+          </Label>
+          <Input
+            disabled={isLoading || isProcessing}
+            id="queue-search"
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Name or phone"
+            value={searchTerm}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground text-xs" htmlFor="queue-booking-type">
+            Booking type
+          </Label>
+          <BookingTypeFilterSelect
+            disabled={isLoading || isProcessing}
+            id="queue-booking-type"
+            value={filterType}
+            onChange={(v) => setFilterType(v)}
+          />
+        </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <SectionContainer
           accentClassName="bg-green-600 text-white"
           count={currentPatient ? 1 : 0}
@@ -344,30 +391,97 @@ export function ReservationsPageContent() {
       </AlertDialog>
 
       <AlertDialog onOpenChange={setFinishDialogOpen} open={finishDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Finish treatment with required note</AlertDialogTitle>
             <AlertDialogDescription>
               Add a clear treatment summary. This note is required and saved in History.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-4">
+          <div className="max-h-[min(70vh,32rem)] space-y-4 overflow-y-auto pr-1">
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="treatment-note">
-                Treatment Note
+                Treatment note
               </label>
               <Textarea
                 disabled={isProcessing}
                 id="treatment-note"
                 minLength={5}
                 onChange={(event) => setTreatmentNote(event.target.value)}
-                placeholder="Example: Tooth extraction completed. Prescribed pain medication and follow-up after 7 days."
+                placeholder="Example: RCT completed under rubber dam; patient advised on post-op care."
                 value={treatmentNote}
               />
               {treatmentNote.trim().length > 0 && treatmentNote.trim().length < 5 && (
                 <p className="text-sm text-red-600">Note must be at least 5 characters.</p>
               )}
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="procedure-summary">Procedure (short)</Label>
+                <Input
+                  disabled={isProcessing}
+                  id="procedure-summary"
+                  maxLength={120}
+                  onChange={(e) => setProcedureSummary(e.target.value)}
+                  placeholder="e.g. RCT, Composite, Extraction"
+                  value={procedureSummary}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fee-input">Fee (optional)</Label>
+                <Input
+                  disabled={isProcessing}
+                  id="fee-input"
+                  inputMode="decimal"
+                  onChange={(e) => setFeeInput(e.target.value)}
+                  placeholder="0.00 — major units"
+                  value={feeInput}
+                />
+                <p className="text-muted-foreground text-xs">Stored precisely as cents on the server.</p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Payment status</Label>
+                <Select
+                  disabled={isProcessing}
+                  value={paymentStatus}
+                  onValueChange={(v) => setPaymentStatus(v as PaymentStatusLabel | "none")}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Not recorded" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not recorded</SelectItem>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="canals-count">Canals count (0–8)</Label>
+                <Input
+                  disabled={isProcessing}
+                  id="canals-count"
+                  max={8}
+                  min={0}
+                  type="number"
+                  value={Number.isNaN(canalsCount) ? 0 : canalsCount}
+                  onChange={(e) => setCanalsCount(Math.min(8, Math.max(0, Number(e.target.value) || 0)))}
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+              </div>
+            </div>
+
+            <TeethTreatedPicker
+              disabled={isProcessing}
+              value={teethTreated}
+              onChange={setTeethTreated}
+            />
+
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="xray-image">
                 X-ray Image (Optional)
@@ -408,14 +522,21 @@ export function ReservationsPageContent() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="disabled:pointer-events-none disabled:opacity-50"
-              disabled={treatmentNote.trim().length < 5}
+              disabled={isProcessing || treatmentNote.trim().length < 5}
               onClick={() => void handleFinishTreatment()}
             >
-              {isProcessing ? "Saving..." : "Finish & Save Note"}
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Finish & save note"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }

@@ -186,7 +186,8 @@
   }
 
   .ui-select > option {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    padding: 0.5rem 0.75rem;
   }
 }

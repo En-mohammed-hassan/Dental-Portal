@@ -15,6 +15,8 @@ export type BookingType = (typeof BOOKING_TYPES)[number]
 export type BloodType = (typeof BLOOD_TYPES)[number]
 export type ReservationStatus = "current" | "waiting" | "upcoming" | "completed"
 
+export type PaymentStatusLabel = "unpaid" | "partial" | "paid"
+
 export interface Patient {
   id: string
   patientId: string
@@ -29,6 +31,24 @@ export interface Patient {
   completedAt?: string | null
   treatmentNote?: string | null
   xrayImageBase64?: string | null
+  /** Stored in cents (integer) */
+  feeCents?: number | null
+  paymentStatus?: PaymentStatusLabel | null
+  canalsCount?: number | null
+  /** FDI permanent tooth codes, e.g. "16", "21" */
+  teethTreated?: string[] | null
+  procedureSummary?: string | null
+}
+
+/** Payload when completing the current treatment (admin). */
+export interface FinishTreatmentInput {
+  treatmentNote: string
+  xrayImageBase64?: string | null
+  feeCents?: number | null
+  paymentStatus?: PaymentStatusLabel | null
+  canalsCount?: number | null
+  teethTreated?: string[] | null
+  procedureSummary?: string | null
 }
 
 export interface NewPatientInput {
@@ -43,7 +63,13 @@ export interface NewReservationInput {
   patientId?: string
   patient?: NewPatientInput
   bookingType: BookingType
-  appointmentDate: string
+  /**
+   * Walk-in / emergency: calendar date for the visit record.
+   * Omitted when `slotId` is set — server uses the slot start time.
+   */
+  appointmentDate?: string
+  /** Advance bookings from /book or admin: ties the reservation to a slot (same rules as patient booking). */
+  slotId?: string
 }
 
 export interface PatientProfile {

@@ -3,7 +3,7 @@
 import { create } from "zustand"
 import toast from "react-hot-toast"
 
-import { type NewReservationInput, type Patient } from "@/types/patient"
+import { type FinishTreatmentInput, type NewReservationInput, type Patient } from "@/types/patient"
 import { type ReservationsApiResponse } from "@/types/reservations"
 
 interface ReservationsState {
@@ -19,7 +19,7 @@ interface ReservationsState {
   addReservation: (payload: NewReservationInput) => Promise<void>
   markAsArrived: (patientId: string) => Promise<void>
   startTreatment: (patientId: string, replaceCurrent: boolean) => Promise<boolean>
-  finishTreatment: (treatmentNote: string, xrayImageBase64?: string | null) => Promise<boolean>
+  finishTreatment: (payload: FinishTreatmentInput) => Promise<boolean>
   cancelReservation: (patientId: string) => Promise<boolean>
   deleteReservationFromHistory: (reservationId: string) => Promise<boolean>
 }
@@ -41,6 +41,7 @@ async function requestReservations(
 ): Promise<ReservationsApiResponse> {
   const response = await fetch(endpoint, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
@@ -135,12 +136,20 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
       set({ isProcessing: false })
     }
   },
-  finishTreatment: async (treatmentNote, xrayImageBase64) => {
+  finishTreatment: async (payload) => {
     set({ isProcessing: true })
     try {
       const response = await requestReservations("/api/reservations/current/finish", {
         method: "POST",
-        body: JSON.stringify({ treatmentNote, xrayImageBase64: xrayImageBase64 ?? null }),
+        body: JSON.stringify({
+          treatmentNote: payload.treatmentNote,
+          xrayImageBase64: payload.xrayImageBase64 ?? null,
+          feeCents: payload.feeCents ?? null,
+          paymentStatus: payload.paymentStatus ?? null,
+          canalsCount: payload.canalsCount ?? null,
+          teethTreated: payload.teethTreated ?? null,
+          procedureSummary: payload.procedureSummary ?? null,
+        }),
       })
       set({ ...response.data, errorMessage: null })
       toast.success("Treatment completed successfully")

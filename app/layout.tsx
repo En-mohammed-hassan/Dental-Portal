@@ -7,8 +7,11 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Dentist Appointment Management",
-  description: "Reservation dashboard for current, waiting, and upcoming patients",
+  title: {
+    default: "Clinic portal",
+    template: "%s",
+  },
+  description: "Online booking, patient portal, and staff dashboard.",
 }
 
 export default function RootLayout({

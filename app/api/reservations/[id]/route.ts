@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
+import { requireStaffApi } from "@/lib/api/require-staff"
 import {
   cancelUpcomingAdvanceReservation,
   deleteReservation,
@@ -23,6 +24,10 @@ export async function DELETE(
   const fromHistory = url.searchParams.get("fromHistory") === "true"
 
   try {
+    const denied = await requireStaffApi()
+    if (denied) {
+      return addCorsHeaders(denied, request)
+    }
     // If fromHistory is true, use deleteReservation (allows deleting completed)
     // Otherwise use cancelUpcomingAdvanceReservation (only for upcoming/waiting)
     const data = fromHistory

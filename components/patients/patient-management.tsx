@@ -2,8 +2,9 @@
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion } from "framer-motion"
+import { type CountryCode } from "libphonenumber-js"
 import { type ChangeEvent, useEffect, useMemo, useState } from "react"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import toast from "react-hot-toast"
 import { z } from "zod"
 
@@ -18,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
@@ -28,6 +30,19 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PhoneCountryField } from "@/components/ui/phone-country-field"
+import {
+  buildE164FromCountryAndLocal,
+  isValidForCountry,
+  splitPhoneToCountryAndLocal,
+} from "@/lib/phone"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { LinkedReservationsDialog } from "@/components/patients/linked-reservations-dialog"
 import { BLOOD_TYPES, type PatientProfile } from "@/types/patient"
 
@@ -42,7 +57,7 @@ const patientProfileSchema = z.object({
     .max(80, "Name is too long"),
   phone: z
     .string()
-    .regex(/^0\d{9}$/, "Phone must be exactly 10 digits (e.g. 0993198176)"),
+    .min(4, "Phone is required"),
   age: z.coerce.number().int().positive("Age must be greater than 0"),
   bloodType: z.enum(BLOOD_TYPES, {
     error: "Please select a blood type",
@@ -98,6 +113,8 @@ export function PatientManagement() {
   const [isLoadingPatients, setIsLoadingPatients] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [phoneCountry, setPhoneCountry] = useState<CountryCode>("SY")
+  const [phoneLocal, setPhoneLocal] = useState("")
   const [previewXrayImage, setPreviewXrayImage] = useState<string | null>(null)
   const [previewXrayTitle, setPreviewXrayTitle] = useState<string>("")
   const [reservationsPatient, setReservationsPatient] = useState<PatientProfile | null>(null)
@@ -111,10 +128,18 @@ export function PatientManagement() {
     defaultValues: resetFormState(),
   })
 
+  useEffect(() => {
+    const normalized =
+      phoneLocal.trim().length > 0 ? buildE164FromCountryAndLocal(phoneCountry, phoneLocal) : ""
+    form.setValue("phone", normalized, { shouldDirty: true, shouldValidate: false })
+  }, [form, phoneCountry, phoneLocal])
+
   const loadPatients = async () => {
     setIsLoadingPatients(true)
     try {
-      const response = await fetch(`/api/patients?search=${encodeURIComponent(search)}`)
+      const response = await fetch(`/api/patients?search=${encodeURIComponent(search)}`, {
+        credentials: "include",
+      })
       if (!response.ok) {
         const result = (await response.json()) as { message?: string }
         throw new Error(result.message ?? "Failed to load patients")
@@ -160,10 +185,15 @@ export function PatientManagement() {
     const method = editorMode === "edit" ? "PATCH" : "POST"
 
     try {
+      if (!isValidForCountry(phoneCountry, phoneLocal)) {
+        throw new Error("Phone number is not valid for selected country.")
+      }
+      const normalizedPhone = buildE164FromCountryAndLocal(phoneCountry, phoneLocal)
       const response = await fetch(endpoint, {
         method,
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, phone: normalizedPhone }),
       })
 
       const result = (await response.json()) as { data?: PatientProfile; message?: string }
@@ -242,7 +272,10 @@ export function PatientManagement() {
     setErrorMessage(null)
     setIsDeleting(true)
     try {
-      const response = await fetch(`/api/patients/${deletePatientId}`, { method: "DELETE" })
+      const response = await fetch(`/api/patients/${deletePatientId}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
       const result = (await response.json()) as { message?: string }
 
       if (!response.ok) {
@@ -270,6 +303,8 @@ export function PatientManagement() {
     setSelectedPatient(null)
     setErrorMessage(null)
     form.reset(resetFormState())
+    setPhoneCountry("SY")
+    setPhoneLocal("")
     setEditorOpen(true)
   }
 
@@ -284,6 +319,9 @@ export function PatientManagement() {
       bloodType: patient.bloodType,
       xrayImageBase64: patient.xrayImageBase64 ?? "",
     })
+    const split = splitPhoneToCountryAndLocal(patient.phone, "SY")
+    setPhoneCountry(split.country)
+    setPhoneLocal(split.localNumber)
     setEditorOpen(true)
   }
 
@@ -456,11 +494,14 @@ export function PatientManagement() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="patient-phone">Phone</Label>
-              <Input
+              <PhoneCountryField
+                country={phoneCountry}
+                localNumber={phoneLocal}
+                onCountryChange={setPhoneCountry}
+                onLocalNumberChange={setPhoneLocal}
                 disabled={isSubmitting}
-                id="patient-phone"
-                placeholder="0993198176"
-                {...form.register("phone")}
+                countryId="patient-country"
+                phoneId="patient-phone"
               />
               {formError.phone && (
                 <p className="text-sm text-red-600">{formError.phone.message}</p>
@@ -471,26 +512,37 @@ export function PatientManagement() {
               <Input
                 disabled={isSubmitting}
                 id="patient-age"
-                min={1}
+                min={0}
                 type="number"
                 {...form.register("age")}
+                onFocus={(e) => e.currentTarget.select()}
               />
               {formError.age && <p className="text-sm text-red-600">{formError.age.message}</p>}
             </div>
             <div className="space-y-1">
               <Label htmlFor="patient-blood">Blood Type</Label>
-              <select
-                className="ui-select"
-                disabled={isSubmitting}
-                id="patient-blood"
-                {...form.register("bloodType")}
-              >
-                {BLOOD_TYPES.map((bloodType) => (
-                  <option key={bloodType} value={bloodType}>
-                    {bloodType}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                control={form.control}
+                name="bloodType"
+                render={({ field }) => (
+                  <Select
+                    disabled={isSubmitting}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger className="w-full" id="patient-blood">
+                      <SelectValue placeholder="Blood type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BLOOD_TYPES.map((bloodType) => (
+                        <SelectItem key={bloodType} value={bloodType}>
+                          {bloodType}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
               {formError.bloodType && (
                 <p className="text-sm text-red-600">{formError.bloodType.message}</p>
               )}
@@ -535,13 +587,14 @@ export function PatientManagement() {
               )}
             </div>
             {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-            <Button className="w-full" disabled={isSubmitting} type="submit">
-              {isSubmitting
-                ? "Saving..."
-                : editorMode === "edit"
-                  ? "Update Patient"
-                  : "Add Patient"}
-            </Button>
+            <LoadingButton
+              className="w-full"
+              loading={isSubmitting}
+              loadingText="Saving…"
+              type="submit"
+            >
+              {editorMode === "edit" ? "Update patient" : "Add patient"}
+            </LoadingButton>
           </form>
         </DialogContent>
       </Dialog>

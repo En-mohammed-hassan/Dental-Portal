@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
+import { requireStaffApi } from "@/lib/api/require-staff"
 import {
   deletePatientProfile,
   updatePatientProfile,
@@ -20,6 +21,10 @@ export async function PATCH(
 ) {
   const { id } = await context.params
   try {
+    const denied = await requireStaffApi()
+    if (denied) {
+      return addCorsHeaders(denied, request)
+    }
     const payload = await request.json()
     const data = await updatePatientProfile(id, payload)
     const response = NextResponse.json({ data })
@@ -38,6 +43,10 @@ export async function DELETE(
   const { id } = await context.params
 
   try {
+    const denied = await requireStaffApi()
+    if (denied) {
+      return addCorsHeaders(denied, request)
+    }
     await deletePatientProfile(id)
     const response = NextResponse.json({ success: true })
     return addCorsHeaders(response, request)

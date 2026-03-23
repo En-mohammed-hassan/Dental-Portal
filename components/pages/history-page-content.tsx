@@ -1,14 +1,16 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import toast from "react-hot-toast"
 
 import { TreatmentHistoryCard } from "@/components/history/treatment-history-card"
-import { Button } from "@/components/ui/button"
 import { SectionContainer } from "@/components/reservations/section-container"
+import { BookingTypeFilterSelect } from "@/components/ui/booking-type-filter"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useReservationsStore } from "@/store/use-reservations-store"
-import { type BookingType } from "@/types/patient"
+import { Label } from "@/components/ui/label"
+import { type BookingType, type Patient } from "@/types/patient"
 
 const listAnimation = {
   initial: { opacity: 0, y: 12 },
@@ -17,113 +19,210 @@ const listAnimation = {
   transition: { duration: 0.2 },
 }
 
+const PAGE_SIZE = 12
+
+type HistoryApiData = {
+  items: Patient[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export function HistoryPageContent() {
-  const PAGE_SIZE = 6
-  const { treatmentHistory, hydrate, isLoading, isProcessing } = useReservationsStore()
   const [historySearch, setHistorySearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [historyBookingType, setHistoryBookingType] = useState<BookingType | "all">("all")
   const [historyFromDate, setHistoryFromDate] = useState("")
   const [historyToDate, setHistoryToDate] = useState("")
   const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<HistoryApiData>({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: PAGE_SIZE,
+    totalPages: 1,
+  })
 
   useEffect(() => {
-    void hydrate()
-  }, [hydrate])
-
-  const filteredHistory = useMemo(() => {
-    return treatmentHistory.filter((patient) => {
-      const query = historySearch.trim().toLowerCase()
-      const matchesQuery =
-        !query ||
-        patient.name.toLowerCase().includes(query) ||
-        patient.phone.toLowerCase().includes(query) ||
-        (patient.treatmentNote ?? "").toLowerCase().includes(query)
-
-      const matchesBooking =
-        historyBookingType === "all" || patient.bookingType === historyBookingType
-
-      const completedDate = patient.completedAt
-        ? new Date(patient.completedAt).toISOString().slice(0, 10)
-        : ""
-      const matchesFrom = !historyFromDate || completedDate >= historyFromDate
-      const matchesTo = !historyToDate || completedDate <= historyToDate
-
-      return matchesQuery && matchesBooking && matchesFrom && matchesTo
-    })
-  }, [treatmentHistory, historySearch, historyBookingType, historyFromDate, historyToDate])
+    const t = window.setTimeout(() => setDebouncedSearch(historySearch.trim()), 350)
+    return () => window.clearTimeout(t)
+  }, [historySearch])
 
   useEffect(() => {
     setPage(1)
-  }, [historySearch, historyBookingType, historyFromDate, historyToDate])
+  }, [debouncedSearch, historyBookingType, historyFromDate, historyToDate])
 
-  const totalPages = Math.max(1, Math.ceil(filteredHistory.length / PAGE_SIZE))
-  const paginatedHistory = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE
-    return filteredHistory.slice(start, start + PAGE_SIZE)
-  }, [filteredHistory, page])
+  const loadHistory = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(PAGE_SIZE),
+        bookingType: historyBookingType,
+      })
+      if (debouncedSearch) {
+        params.set("q", debouncedSearch)
+      }
+      if (historyFromDate) {
+        params.set("completedFrom", historyFromDate)
+      }
+      if (historyToDate) {
+        params.set("completedTo", historyToDate)
+      }
+      const res = await fetch(`/api/reservations/history?${params.toString()}`, {
+        credentials: "include",
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: HistoryApiData
+        message?: string
+      }
+      if (!res.ok) {
+        throw new Error(json.message ?? "Failed to load history")
+      }
+      if (!json.data) {
+        throw new Error("Invalid response")
+      }
+      setData(json.data)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to load history"
+      toast.error(message)
+      setData({
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        totalPages: 1,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [page, debouncedSearch, historyBookingType, historyFromDate, historyToDate])
 
   useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages)
+    void loadHistory()
+  }, [loadHistory])
+
+  useEffect(() => {
+    if (page > data.totalPages && data.totalPages >= 1) {
+      setPage(data.totalPages)
     }
-  }, [page, totalPages])
+  }, [page, data.totalPages])
+
+  const fromIdx = data.total === 0 ? 0 : (data.page - 1) * data.pageSize + 1
+  const toIdx = Math.min(data.page * data.pageSize, data.total)
 
   return (
-    <section className="space-y-4">
+    <div className="space-y-8 pb-4">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Treatment History</h2>
         <p className="text-muted-foreground text-sm">
-          Review completed treatments with notes, search, and date filters.
+          Server-paginated completed visits with search, filters, and clinical billing fields.
         </p>
       </div>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Input
-          disabled={isLoading || isProcessing}
-          onChange={(event) => setHistorySearch(event.target.value)}
-          placeholder="Search by patient, phone, or note"
-          value={historySearch}
-        />
-        <select
-          className="ui-select"
-          disabled={isLoading || isProcessing}
-          onChange={(event) =>
-            setHistoryBookingType((event.target.value || "all") as BookingType | "all")
-          }
-          value={historyBookingType}
-        >
-          <option value="all">All Booking Types</option>
-          <option value="advance">Advance</option>
-          <option value="walk-in">Walk-in</option>
-          <option value="emergency">Emergency</option>
-        </select>
-        <Input
-          disabled={isLoading || isProcessing}
-          onChange={(event) => setHistoryFromDate(event.target.value)}
-          type="date"
-          value={historyFromDate}
-        />
-        <Input
-          disabled={isLoading || isProcessing}
-          onChange={(event) => setHistoryToDate(event.target.value)}
-          type="date"
-          value={historyToDate}
-        />
+      <section
+        aria-label="History filters"
+        className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200/80 bg-white/60 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 md:grid-cols-2 xl:grid-cols-4 xl:items-end"
+      >
+        <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
+          <Label className="text-muted-foreground text-xs" htmlFor="history-search">
+            Search
+          </Label>
+          <Input
+            disabled={loading}
+            id="history-search"
+            onChange={(event) => setHistorySearch(event.target.value)}
+            placeholder="Patient, phone, note, procedure…"
+            value={historySearch}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground text-xs" htmlFor="history-booking">
+            Booking type
+          </Label>
+          <BookingTypeFilterSelect
+            disabled={loading}
+            id="history-booking"
+            value={historyBookingType}
+            onChange={(v) => setHistoryBookingType(v)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground text-xs" htmlFor="history-from">
+            Completed from
+          </Label>
+          <Input
+            disabled={loading}
+            id="history-from"
+            onChange={(event) => setHistoryFromDate(event.target.value)}
+            type="date"
+            value={historyFromDate}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground text-xs" htmlFor="history-to">
+            Completed to
+          </Label>
+          <Input
+            disabled={loading}
+            id="history-to"
+            onChange={(event) => setHistoryToDate(event.target.value)}
+            type="date"
+            value={historyToDate}
+          />
+        </div>
       </section>
 
       <SectionContainer
         accentClassName="bg-violet-600 text-white"
-        count={filteredHistory.length}
+        count={data.total}
         title="Completed Treatments"
       >
+        <div className="text-muted-foreground flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            {loading
+              ? "Loading…"
+              : data.total === 0
+                ? "No records match."
+                : `Showing ${fromIdx}–${toIdx} of ${data.total}`}
+          </p>
+          {data.totalPages > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                disabled={loading || page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Previous
+              </Button>
+              <span className="tabular-nums">
+                Page {page} / {data.totalPages}
+              </span>
+              <Button
+                disabled={loading || page >= data.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
+
         <AnimatePresence mode="popLayout">
-          {paginatedHistory.length ? (
-            paginatedHistory.map((patient) => (
+          {!loading && data.items.length ? (
+            data.items.map((patient) => (
               <motion.div key={patient.id} layout {...listAnimation}>
-                <TreatmentHistoryCard record={patient} />
+                <TreatmentHistoryCard onDeleted={() => void loadHistory()} record={patient} />
               </motion.div>
             ))
-          ) : (
+          ) : !loading ? (
             <motion.p
               key="no-history"
               className="text-muted-foreground text-sm"
@@ -131,34 +230,17 @@ export function HistoryPageContent() {
             >
               No history records match your filters.
             </motion.p>
+          ) : (
+            <motion.p
+              key="loading-history"
+              className="text-muted-foreground text-sm"
+              {...listAnimation}
+            >
+              Loading history…
+            </motion.p>
           )}
         </AnimatePresence>
-        {filteredHistory.length > PAGE_SIZE && (
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <Button
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              size="sm"
-              type="button"
-              variant="outline"
-              disabled={page === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-muted-foreground text-xs">
-              Page {page} / {totalPages}
-            </span>
-            <Button
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              size="sm"
-              type="button"
-              variant="outline"
-              disabled={page === totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        )}
       </SectionContainer>
-    </section>
+    </div>
   )
 }

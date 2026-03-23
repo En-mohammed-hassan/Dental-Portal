@@ -15,8 +15,8 @@ export function SectionContainer({
   children,
 }: SectionContainerProps) {
   return (
-    <Card className="h-full gap-4 py-4">
-      <CardHeader className="px-4 pb-0 sm:px-6">
+    <Card className="h-full gap-4 py-5">
+      <CardHeader className="px-4 pb-1 sm:px-6">
         <CardTitle className="flex items-center justify-between text-base sm:text-lg">
           <span>{title}</span>
           {typeof count === "number" && (
@@ -31,7 +31,7 @@ export function SectionContainer({
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3 px-4 sm:px-6">{children}</CardContent>
+      <CardContent className="space-y-4 px-4 pt-1 sm:px-6">{children}</CardContent>
     </Card>
   )
 }

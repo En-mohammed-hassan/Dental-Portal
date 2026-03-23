@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Trash2, X } from "lucide-react"
+import { Trash2 } from "lucide-react"
 
 import {
   AlertDialog,
@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { TeethTreatedPicker } from "@/components/dental/teeth-treated-picker"
 import {
   Dialog,
   DialogContent,
@@ -33,9 +34,24 @@ import {
 
 interface TreatmentHistoryCardProps {
   record: Patient
+  onDeleted?: () => void
 }
 
-export function TreatmentHistoryCard({ record }: TreatmentHistoryCardProps) {
+function formatFee(cents: number | null | undefined) {
+  if (cents == null) return null
+  return (cents / 100).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+const paymentLabels: Record<NonNullable<Patient["paymentStatus"]>, string> = {
+  unpaid: "Unpaid",
+  partial: "Partial",
+  paid: "Paid",
+}
+
+export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCardProps) {
   const { deleteReservationFromHistory, isProcessing } = useReservationsStore()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [xrayPreviewOpen, setXrayPreviewOpen] = useState(false)
@@ -44,8 +60,11 @@ export function TreatmentHistoryCard({ record }: TreatmentHistoryCardProps) {
     const success = await deleteReservationFromHistory(record.id)
     if (success) {
       setDeleteDialogOpen(false)
+      onDeleted?.()
     }
   }
+
+  const feeLabel = formatFee(record.feeCents)
 
   return (
     <>
@@ -104,6 +123,52 @@ export function TreatmentHistoryCard({ record }: TreatmentHistoryCardProps) {
                   src={record.xrayImageBase64}
                 />
               </button>
+            </div>
+          )}
+
+          {(record.procedureSummary || record.canalsCount != null || record.teethTreated?.length) && (
+            <div className="grid grid-cols-1 gap-2 rounded-md border bg-white/40 p-2 text-sm dark:bg-slate-900/30 sm:grid-cols-2">
+              {record.procedureSummary ? (
+                <p>
+                  <span className="text-muted-foreground">Procedure:</span> {record.procedureSummary}
+                </p>
+              ) : null}
+              {record.canalsCount != null ? (
+                <p>
+                  <span className="text-muted-foreground">Canals:</span> {record.canalsCount}
+                </p>
+              ) : null}
+              {record.teethTreated && record.teethTreated.length > 0 ? (
+                <div className="space-y-2 sm:col-span-2">
+                  <p>
+                    <span className="text-muted-foreground">Teeth (FDI):</span>{" "}
+                    {record.teethTreated.join(", ")}
+                  </p>
+                  <TeethTreatedPicker
+                    readOnly
+                    value={record.teethTreated}
+                    onChange={() => undefined}
+                    triggerLabel="Open tooth chart"
+                    title={`Tooth chart · ${record.name}`}
+                    description="Review treated teeth from this completed session."
+                  />
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {(feeLabel || record.paymentStatus) && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {feeLabel ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
+                  Fee: {feeLabel}
+                </span>
+              ) : null}
+              {record.paymentStatus ? (
+                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                  {paymentLabels[record.paymentStatus]}
+                </span>
+              ) : null}
             </div>
           )}
 

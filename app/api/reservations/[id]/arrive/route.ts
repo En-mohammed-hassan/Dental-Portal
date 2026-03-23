@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
+import { requireStaffApi } from "@/lib/api/require-staff"
 import { markAsArrived } from "@/lib/server/reservations-service"
 
 // Force dynamic rendering to prevent build-time execution
@@ -18,6 +19,10 @@ export async function POST(
   const { id } = await context.params
 
   try {
+    const denied = await requireStaffApi()
+    if (denied) {
+      return addCorsHeaders(denied, request)
+    }
     const data = await markAsArrived(id)
     const response = NextResponse.json({ data })
     return addCorsHeaders(response, request)

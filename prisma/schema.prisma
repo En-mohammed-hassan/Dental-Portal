@@ -31,6 +31,50 @@ enum ReservationStatus {
   COMPLETED
 }
 
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum UserRole {
+  ADMIN
+  SECRETARY
+  PATIENT
+}
+
+model User {
+  id               String          @id @default(cuid())
+  phone            String          @unique
+  name             String?
+  role             UserRole
+  patientProfileId String?         @unique
+  patientProfile   PatientProfile? @relation(fields: [patientProfileId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([role])
+}
+
+model AdminPhone {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  label     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+}
+
 model PatientProfile {
   id              String        @id @default(cuid())
   name            String
@@ -41,26 +85,107 @@ model PatientProfile {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   reservations    Reservation[]
+  user            User?
 
   @@index([name])
-  // Note: phone already has unique index from @unique constraint
+}
+
+model BookingSlot {
+  id           String        @id @default(cuid())
+  startsAt     DateTime
+  endsAt       DateTime
+  capacity     Int           @default(1)
+  isActive     Boolean       @default(true)
+  label        String?
+  reservations Reservation[]
+
+  @@index([startsAt])
+  @@index([isActive])
 }
 
 model Reservation {
-  id              String            @id @default(cuid())
-  patientId       String
-  bookingType     BookingType
-  appointmentDate DateTime
-  hasArrived      Boolean           @default(false)
-  status          ReservationStatus
-  completedAt     DateTime?
-  treatmentNote   String?
-  xrayImageBase64 String?
-  createdAt       DateTime          @default(now())
-  patient         PatientProfile    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  id               String            @id @default(cuid())
+  patientId        String
+  bookingType      BookingType
+  appointmentDate  DateTime
+  hasArrived       Boolean           @default(false)
+  status           ReservationStatus
+  completedAt      DateTime?
+  treatmentNote    String?
+  xrayImageBase64  String?
+  slotId           String?
+  /// Fee in smallest currency unit (e.g. cents); optional charting field for completed visits
+  feeCents         Int?
+  paymentStatus    PaymentStatus?
+  /// Endodontic / RCT: number of canals treated (0–8)
+  canalsCount      Int?
+  /// FDI tooth numbers as JSON string array, e.g. ["16","21"]
+  teethTreated     Json?
+  /// Short procedure label, e.g. "RCT", "Composite filling"
+  procedureSummary String?
+  createdAt        DateTime          @default(now())
+  patient          PatientProfile    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  slot             BookingSlot?      @relation(fields: [slotId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([appointmentDate])
   @@index([bookingType])
   @@index([patientId])
+  @@index([slotId])
+  @@index([completedAt])
+}
+
+model SiteSettings {
+  id            String  @id @default("default")
+  clinicName    String  @default("Elkood Dental")
+  heroTitle     String  @default("Smile with confidence")
+  heroSubtitle  String  @default("Modern dentistry, gentle care.")
+  heroImageBase64 String? @db.Text @map("heroImageUrl")
+  aboutMarkdown String? @db.Text
+  contactPhone  String?
+  contactEmail  String?
+  address       String?
+  footerNote    String?
+  /// White-label copy: nav badges, page titles, home feature cards, SEO, etc.
+  marketingContent Json? @default("{}")
+  updatedAt     DateTime @updatedAt
+}
+
+model ServiceItem {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  priceLabel  String?
+  imageBase64 String? @db.Text @map("imageUrl")
+  sortOrder   Int      @default(0)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([published, sortOrder])
+}
+
+model BlogPost {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  excerpt     String?
+  content     String    @db.Text
+  coverImageBase64 String? @db.Text @map("coverUrl")
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([published, publishedAt])
+}
+
+model GalleryImage {
+  id        String   @id @default(cuid())
+  imageBase64 String @db.Text @map("imageUrl")
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([sortOrder])
 }

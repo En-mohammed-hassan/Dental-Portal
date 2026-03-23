@@ -19,15 +19,15 @@ export default function NotFound() {
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Button asChild variant="outline">
-            <Link href="/reservations">
+            <Link href="/">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Go Back
+              Go home
             </Link>
           </Button>
           <Button asChild>
-            <Link href="/reservations">
+            <Link href="/admin/reservations">
               <Home className="mr-2 h-4 w-4" />
-              Go to Dashboard
+              Staff dashboard
             </Link>
           </Button>
         </div>

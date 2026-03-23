@@ -1,5 +1,7 @@
-import { Prisma, PrismaClient } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import { z } from "zod"
+
+import { sendSms, treatmentDoneMessage } from "@/lib/sms"
 
 import {
   type NewPatientInput,
@@ -13,24 +15,10 @@ import {
 import { type ReservationsData } from "@/types/reservations"
 import { sortByAppointmentDate } from "@/utils/patient"
 
-const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient
-}
+import { normalizeTeethTreated } from "@/lib/dental/fdi-teeth"
+import { buildProfilePhoneCandidates, normalizeToE164 } from "@/lib/phone"
 
-// Optimize Prisma client with connection pooling and query logging in development
-const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-  // Connection pool optimization
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-})
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma
-}
+import { prisma } from "./db"
 
 // Safely check if fields are supported (handle cases where DMMF might not be available during build)
 function checkFieldSupport(modelName: string, fieldName: string): boolean {
@@ -113,9 +101,23 @@ const reservationStatusFromDb: Record<string, AppReservationStatus> = {
   COMPLETED: "completed",
 }
 
+type AppPaymentStatus = import("@/types/patient").PaymentStatusLabel
+
+const paymentStatusToDb: Record<AppPaymentStatus, "UNPAID" | "PARTIAL" | "PAID"> = {
+  unpaid: "UNPAID",
+  partial: "PARTIAL",
+  paid: "PAID",
+}
+
+const paymentStatusFromDb: Record<string, AppPaymentStatus> = {
+  UNPAID: "unpaid",
+  PARTIAL: "partial",
+  PAID: "paid",
+}
+
 const patientProfilePayloadSchema = z.object({
   name: z.string().trim().min(3).max(80),
-  phone: z.string().regex(/^0\d{9}$/),
+  phone: z.string().min(4),
   age: z.coerce.number().int().positive(),
   bloodType: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
   xrayImageBase64: z
@@ -139,6 +141,11 @@ function mapReservationFromDb(patient: {
   completedAt?: Date | null
   treatmentNote?: string | null
   xrayImageBase64?: string | null
+  feeCents?: number | null
+  paymentStatus?: string | null
+  canalsCount?: number | null
+  teethTreated?: unknown
+  procedureSummary?: string | null
   patient: {
     name: string
     phone: string
@@ -147,6 +154,7 @@ function mapReservationFromDb(patient: {
     xrayImageBase64?: string | null
   }
 }): Patient {
+  const ps = patient.paymentStatus
   return {
     id: patient.id,
     patientId: patient.patientId,
@@ -161,6 +169,11 @@ function mapReservationFromDb(patient: {
     completedAt: patient.completedAt ? patient.completedAt.toISOString() : null,
     treatmentNote: patient.treatmentNote ?? null,
     xrayImageBase64: patient.xrayImageBase64 ?? null,
+    feeCents: patient.feeCents ?? null,
+    paymentStatus: ps && paymentStatusFromDb[ps] ? paymentStatusFromDb[ps] : null,
+    canalsCount: patient.canalsCount ?? null,
+    teethTreated: normalizeTeethTreated(patient.teethTreated),
+    procedureSummary: patient.procedureSummary ?? null,
   }
 }
 
@@ -208,9 +221,14 @@ function mapPatientProfileFromDb(patient: {
 }
 
 async function ensureUniquePhone(phone: string, excludePatientId?: string): Promise<void> {
+  const candidates = buildProfilePhoneCandidates(phone, "SY")
+  const normalized = normalizeToE164(phone, "SY")
+  if (!normalized) {
+    throw new Error("Invalid phone number format")
+  }
   const existing = await prisma.patientProfile.findFirst({
     where: {
-      phone,
+      phone: { in: [...new Set([normalized, ...candidates])] },
       ...(excludePatientId ? { id: { not: excludePatientId } } : {}),
     },
     select: { id: true },
@@ -219,6 +237,14 @@ async function ensureUniquePhone(phone: string, excludePatientId?: string): Prom
   if (existing) {
     throw new Error("Phone number already exists")
   }
+}
+
+function normalizePhoneOrThrow(phone: string): string {
+  const normalized = normalizeToE164(phone, "SY")
+  if (!normalized) {
+    throw new Error("Invalid phone number format")
+  }
+  return normalized
 }
 
 // Helper to build patient select object
@@ -237,9 +263,15 @@ const getReservationSelect = () => ({
   bookingType: true,
   appointmentDate: true,
   hasArrived: true,
+  status: true,
   createdAt: true,
   completedAt: true,
   treatmentNote: true,
+  feeCents: true,
+  paymentStatus: true,
+  canalsCount: true,
+  teethTreated: true,
+  procedureSummary: true,
   ...(supportsReservationXrayImageBase64Field ? { xrayImageBase64: true } : {}),
   patient: {
     select: getPatientSelect(),
@@ -247,8 +279,7 @@ const getReservationSelect = () => ({
 })
 
 async function toReservationsData(): Promise<ReservationsData> {
-  // Optimize: Select only needed fields and limit history to improve performance
-  const [current, waiting, upcoming, history] = await Promise.all([
+  const [current, waiting, upcoming] = await Promise.all([
     prisma.reservation.findFirst({
       where: { status: "CURRENT" },
       orderBy: { createdAt: "desc" },
@@ -264,12 +295,6 @@ async function toReservationsData(): Promise<ReservationsData> {
       orderBy: [{ appointmentDate: "asc" }, { createdAt: "asc" }],
       select: getReservationSelect(),
     }),
-    prisma.reservation.findMany({
-      where: { status: "COMPLETED" },
-      orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
-      take: 100, // Limit history to recent 100 records for performance
-      select: getReservationSelect(),
-    }),
   ])
 
   return {
@@ -282,14 +307,95 @@ async function toReservationsData(): Promise<ReservationsData> {
     upcomingPatients: sortByAppointmentDate(
       upcoming.map((item) => mapReservationFromDb(item as Parameters<typeof mapReservationFromDb>[0]))
     ),
-    treatmentHistory: history.map(
-      (item) => mapReservationFromDb(item as Parameters<typeof mapReservationFromDb>[0])
-    ),
+    treatmentHistory: [],
   }
+}
+
+export type TreatmentHistoryPageResult = {
+  items: Patient[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+export async function listTreatmentHistoryPage(options: {
+  page: number
+  pageSize: number
+  q?: string
+  bookingType?: AppBookingType | "all"
+  completedFrom?: string
+  completedTo?: string
+}): Promise<TreatmentHistoryPageResult> {
+  const page = Math.max(1, Math.floor(options.page) || 1)
+  const pageSize = Math.min(100, Math.max(5, Math.floor(options.pageSize) || 20))
+
+  const where: Prisma.ReservationWhereInput = { status: "COMPLETED" }
+
+  if (options.bookingType && options.bookingType !== "all") {
+    where.bookingType = bookingTypeToDb[options.bookingType] as never
+  }
+
+  const q = options.q?.trim()
+  if (q) {
+    where.OR = [
+      { treatmentNote: { contains: q, mode: "insensitive" } },
+      { procedureSummary: { contains: q, mode: "insensitive" } },
+      { patient: { name: { contains: q, mode: "insensitive" } } },
+      { patient: { phone: { contains: q } } },
+    ]
+  }
+
+  const completedFilter: Prisma.DateTimeNullableFilter = {}
+  if (options.completedFrom?.trim()) {
+    const d = new Date(`${options.completedFrom.trim()}T00:00:00.000Z`)
+    if (!Number.isNaN(d.getTime())) {
+      completedFilter.gte = d
+    }
+  }
+  if (options.completedTo?.trim()) {
+    const d = new Date(`${options.completedTo.trim()}T23:59:59.999Z`)
+    if (!Number.isNaN(d.getTime())) {
+      completedFilter.lte = d
+    }
+  }
+  if (Object.keys(completedFilter).length > 0) {
+    where.completedAt = completedFilter
+  }
+
+  const [total, rows] = await Promise.all([
+    prisma.reservation.count({ where }),
+    prisma.reservation.findMany({
+      where,
+      orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: getReservationSelect(),
+    }),
+  ])
+
+  const items = rows.map((item) =>
+    mapReservationFromDb(item as Parameters<typeof mapReservationFromDb>[0])
+  )
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  return { items, total, page, pageSize, totalPages }
 }
 
 export async function getReservations(): Promise<ReservationsData> {
   return toReservationsData()
+}
+
+export async function listReservationsForPatient(patientProfileId: string): Promise<Patient[]> {
+  const rows = await prisma.reservation.findMany({
+    where: { patientId: patientProfileId },
+    orderBy: [{ appointmentDate: "desc" }, { createdAt: "desc" }],
+    take: 50,
+    select: getReservationSelect(),
+  })
+  return rows.map((item) =>
+    mapReservationFromDb(item as Parameters<typeof mapReservationFromDb>[0])
+  )
 }
 
 export async function addReservation(payload: NewReservationInput): Promise<ReservationsData> {
@@ -302,8 +408,38 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
     throw new Error("Invalid booking type")
   }
 
-  if (!payload.appointmentDate || Number.isNaN(Date.parse(payload.appointmentDate))) {
-    throw new Error("Invalid appointment date")
+  let appointmentDateTime: Date
+  let slotId: string | undefined
+
+  if (payload.slotId) {
+    if (payload.bookingType !== "advance") {
+      throw new Error("Slot booking must use advance type")
+    }
+    const slot = await prisma.bookingSlot.findFirst({
+      where: { id: payload.slotId, isActive: true },
+    })
+    if (!slot) {
+      throw new Error("This time slot is not available")
+    }
+    if (slot.endsAt < new Date()) {
+      throw new Error("This time slot has already passed")
+    }
+    const taken = await prisma.reservation.count({
+      where: {
+        slotId: slot.id,
+        status: { in: ["UPCOMING", "WAITING", "CURRENT"] },
+      },
+    })
+    if (taken >= slot.capacity) {
+      throw new Error("This time slot is fully booked")
+    }
+    appointmentDateTime = slot.startsAt
+    slotId = slot.id
+  } else {
+    if (!payload.appointmentDate || Number.isNaN(Date.parse(payload.appointmentDate))) {
+      throw new Error("Invalid appointment date")
+    }
+    appointmentDateTime = new Date(payload.appointmentDate)
   }
 
   let patientId = payload.patientId
@@ -315,14 +451,15 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
     }
 
     const xrayImageBase64 = parsedPatient.data.xrayImageBase64?.trim()
-    await ensureUniquePhone(parsedPatient.data.phone)
+    const normalizedPhone = normalizePhoneOrThrow(parsedPatient.data.phone)
+    await ensureUniquePhone(normalizedPhone)
 
     let createdPatient
     try {
       createdPatient = await prisma.patientProfile.create({
         data: {
           name: parsedPatient.data.name,
-          phone: parsedPatient.data.phone,
+          phone: normalizedPhone,
           age: parsedPatient.data.age,
           bloodType: bloodTypeToDb[parsedPatient.data.bloodType] as never,
           ...(supportsXrayImageBase64Field && xrayImageBase64
@@ -354,9 +491,10 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
     data: {
       patientId: existingPatient.id,
       bookingType: bookingType as never,
-      appointmentDate: new Date(payload.appointmentDate),
-      hasArrived: payload.bookingType !== "advance",
-      status: payload.bookingType === "advance" ? "UPCOMING" : "WAITING",
+      appointmentDate: appointmentDateTime,
+      hasArrived: Boolean(payload.slotId) ? false : payload.bookingType !== "advance",
+      status: payload.bookingType === "advance" || payload.slotId ? "UPCOMING" : "WAITING",
+      ...(slotId ? { slotId } : {}),
     },
   })
 
@@ -415,16 +553,20 @@ export async function startTreatment(
   return toReservationsData()
 }
 
-export async function finishTreatment(
-  treatmentNote: string,
+export async function finishTreatment(payload: {
+  treatmentNote: string
   xrayImageBase64?: string | null
-): Promise<ReservationsData> {
-  const trimmed = treatmentNote.trim()
+  feeCents?: number | null
+  paymentStatus?: AppPaymentStatus | null
+  canalsCount?: number | null
+  teethTreated?: string[] | null
+  procedureSummary?: string | null
+}): Promise<ReservationsData> {
+  const trimmed = payload.treatmentNote.trim()
   if (trimmed.length < 5) {
     throw new Error("Treatment note is required and must be at least 5 characters")
   }
 
-  // Find current reservation first, then update it
   const currentReservation = await prisma.reservation.findFirst({
     where: { status: "CURRENT" },
   })
@@ -433,29 +575,41 @@ export async function finishTreatment(
     throw new Error("No current treatment found")
   }
 
-  // Process X-ray image - trim if it exists, otherwise set to null
-  const xrayImage = xrayImageBase64 && xrayImageBase64.trim() ? xrayImageBase64.trim() : null
+  const xrayImage =
+    payload.xrayImageBase64 && payload.xrayImageBase64.trim()
+      ? payload.xrayImageBase64.trim()
+      : null
 
-  // Debug logging (remove in production)
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[DEBUG] finishTreatment - xrayImageBase64 received:", xrayImageBase64 ? "YES" : "NO")
-    console.log("[DEBUG] finishTreatment - xrayImage processed:", xrayImage ? "YES" : "NO")
-    console.log("[DEBUG] finishTreatment - field supported:", supportsReservationXrayImageBase64Field)
-  }
+  const feeCents =
+    payload.feeCents != null && Number.isFinite(Number(payload.feeCents))
+      ? Math.max(0, Math.min(500_000_000, Math.round(Number(payload.feeCents))))
+      : null
 
-  // Build update data - always include xrayImageBase64 since the field exists in schema
+  const canalsCount =
+    payload.canalsCount != null && Number.isFinite(Number(payload.canalsCount))
+      ? Math.min(8, Math.max(0, Math.round(Number(payload.canalsCount))))
+      : null
+
+  const teethNormalized = normalizeTeethTreated(payload.teethTreated ?? null)
+  const procedureSummary = payload.procedureSummary?.trim()
+    ? payload.procedureSummary.trim().slice(0, 120)
+    : null
+
+  const paymentStatus =
+    payload.paymentStatus && paymentStatusToDb[payload.paymentStatus]
+      ? paymentStatusToDb[payload.paymentStatus]
+      : null
+
   const updateData = {
     status: "COMPLETED" as const,
     completedAt: new Date(),
     treatmentNote: trimmed,
     xrayImageBase64: xrayImage,
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[DEBUG] finishTreatment - updateData:", {
-      ...updateData,
-      xrayImageBase64: updateData.xrayImageBase64 ? "PRESENT" : "NULL",
-    })
+    feeCents,
+    paymentStatus: paymentStatus as never,
+    canalsCount,
+    teethTreated: teethNormalized === null ? null : (teethNormalized as Prisma.InputJsonValue),
+    procedureSummary,
   }
 
   await prisma.reservation.update({
@@ -463,8 +617,20 @@ export async function finishTreatment(
     data: updateData as never,
   })
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[DEBUG] finishTreatment - reservation updated successfully")
+  const patientRow = await prisma.patientProfile.findUnique({
+    where: { id: currentReservation.patientId },
+    select: { name: true, phone: true },
+  })
+  const settings = await prisma.siteSettings.findUnique({
+    where: { id: "default" },
+    select: { clinicName: true },
+  })
+  const clinicName = settings?.clinicName ?? "Our clinic"
+  if (patientRow?.phone) {
+    void sendSms(
+      patientRow.phone,
+      treatmentDoneMessage(patientRow.name.split(" ")[0] ?? patientRow.name, clinicName)
+    )
   }
 
   return toReservationsData()
@@ -563,14 +729,15 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
   }
 
   const xrayImageBase64 = parsed.data.xrayImageBase64?.trim()
-  await ensureUniquePhone(parsed.data.phone)
+  const normalizedPhone = normalizePhoneOrThrow(parsed.data.phone)
+  await ensureUniquePhone(normalizedPhone)
 
   let patient
   try {
     patient = await prisma.patientProfile.create({
       data: {
         name: parsed.data.name,
-        phone: parsed.data.phone,
+        phone: normalizedPhone,
         age: parsed.data.age,
         bloodType: bloodTypeToDb[parsed.data.bloodType] as never,
         ...(supportsXrayImageBase64Field && xrayImageBase64 ? { xrayImageBase64 } : {}),
@@ -627,7 +794,8 @@ export async function updatePatientProfile(
   }
 
   const xrayImageBase64 = parsed.data.xrayImageBase64?.trim()
-  await ensureUniquePhone(parsed.data.phone, patientId)
+  const normalizedPhone = normalizePhoneOrThrow(parsed.data.phone)
+  await ensureUniquePhone(normalizedPhone, patientId)
 
   let patient
   try {
@@ -637,7 +805,7 @@ export async function updatePatientProfile(
       where: { id: patientId },
       data: {
         name: parsed.data.name,
-        phone: parsed.data.phone,
+        phone: normalizedPhone,
         age: parsed.data.age,
         bloodType: bloodTypeToDb[parsed.data.bloodType] as never,
         ...(supportsXrayImageBase64Field

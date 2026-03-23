@@ -41,9 +41,9 @@ export default function GlobalError({
             Try again
           </Button>
           <Button asChild>
-            <Link href="/reservations">
+            <Link href="/">
               <Home className="mr-2 h-4 w-4" />
-              Go to Dashboard
+              Go home
             </Link>
           </Button>
         </div>

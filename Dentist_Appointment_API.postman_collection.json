@@ -1,0 +1,401 @@
+{
+	"info": {
+		"_postman_id": "dentist-appointment-api",
+		"name": "Dentist Appointment Management API",
+		"description": "Complete API collection for Dentist Appointment Management System",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Reservations",
+			"item": [
+				{
+					"name": "Get All Reservations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/reservations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Get current patient, waiting patients, upcoming patients, and treatment history."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Reservation",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"patient\": {\n    \"name\": \"John Doe\",\n    \"phone\": \"+1234567890\",\n    \"age\": 35,\n    \"bloodType\": \"O+\",\n    \"xrayImageBase64\": null\n  },\n  \"bookingType\": \"advance\",\n  \"appointmentDate\": \"2024-12-25T10:00:00.000Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/reservations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations"
+							]
+						},
+						"description": "Create a new reservation for a patient. You can either provide a patientId (if patient exists) or create a new patient with the patient object."
+					},
+					"response": []
+				},
+				{
+					"name": "Start Treatment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"replaceCurrent\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/reservations/:id/start",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations",
+								":id",
+								"start"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "reservation-id-here",
+									"description": "Reservation ID"
+								}
+							]
+						},
+						"description": "Start treatment for a waiting patient. Set replaceCurrent to true if you want to replace the current patient."
+					},
+					"response": []
+				},
+				{
+					"name": "Mark as Arrived",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/reservations/:id/arrive",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations",
+								":id",
+								"arrive"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "reservation-id-here",
+									"description": "Reservation ID"
+								}
+							]
+						},
+						"description": "Mark an upcoming patient as arrived (moves to waiting list)."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Reservation",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reservations/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "reservation-id-here",
+									"description": "Reservation ID"
+								}
+							]
+						},
+						"description": "Cancel a reservation (upcoming/waiting). Add ?fromHistory=true to delete from history."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Reservation from History",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reservations/:id?fromHistory=true",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations",
+								":id"
+							],
+							"query": [
+								{
+									"key": "fromHistory",
+									"value": "true"
+								}
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "reservation-id-here",
+									"description": "Reservation ID"
+								}
+							]
+						},
+						"description": "Delete a reservation from treatment history."
+					},
+					"response": []
+				},
+				{
+					"name": "Finish Treatment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"treatmentNote\": \"Tooth extraction completed. Prescribed pain medication and follow-up after 7 days.\",\n  \"xrayImageBase64\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/reservations/current/finish",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reservations",
+								"current",
+								"finish"
+							]
+						},
+						"description": "Finish the current treatment with a note and optional X-ray image. Treatment note is required (minimum 5 characters)."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing reservations and treatment flow"
+		},
+		{
+			"name": "Patients",
+			"item": [
+				{
+					"name": "Get All Patients",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients"
+							]
+						},
+						"description": "Get a list of all patients. Add ?search=query to search by name or phone."
+					},
+					"response": []
+				},
+				{
+					"name": "Search Patients",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/patients?search=john",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "john",
+									"description": "Search by name or phone"
+								}
+							]
+						},
+						"description": "Search patients by name or phone number."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Patient",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Jane Smith\",\n  \"phone\": \"+1234567891\",\n  \"age\": 28,\n  \"bloodType\": \"A+\",\n  \"xrayImageBase64\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/patients",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients"
+							]
+						},
+						"description": "Create a new patient profile."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Patient",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Jane Smith Updated\",\n  \"phone\": \"+1234567891\",\n  \"age\": 29\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/patients/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "patient-id-here",
+									"description": "Patient ID"
+								}
+							]
+						},
+						"description": "Update an existing patient profile. All fields are optional."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Patient",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/patients/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"patients",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "patient-id-here",
+									"description": "Patient ID"
+								}
+							]
+						},
+						"description": "Delete a patient profile."
+					},
+					"response": []
+				}
+			],
+			"description": "Endpoints for managing patient profiles"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3000/api",
+			"type": "string"
+		}
+	]
+}
+ 
