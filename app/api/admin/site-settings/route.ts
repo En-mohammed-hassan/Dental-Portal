@@ -19,6 +19,8 @@ const putSchema = z.object({
   aboutMarkdown: z.string().nullable().optional(),
   contactPhone: z.string().nullable().optional(),
   contactEmail: z.string().nullable().optional(),
+  facebookUrl: z.string().url().nullable().optional(),
+  instagramUrl: z.string().url().nullable().optional(),
   address: z.string().nullable().optional(),
   footerNote: z.string().nullable().optional(),
   marketingContent: z.unknown().optional(),

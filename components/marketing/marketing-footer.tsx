@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Mail, MapPin, Phone } from "lucide-react"
+import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react"
 
 import { useSiteContent } from "@/components/marketing/site-content-context"
 import { cn } from "@/lib/utils"
@@ -40,6 +40,28 @@ export function MarketingFooter() {
                 >
                   <Mail className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
                   {site.contactEmail}
+                </a>
+              ) : null}
+              {site.facebookUrl ? (
+                <a
+                  href={site.facebookUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 transition hover:text-teal-700 dark:hover:text-teal-400"
+                >
+                  <Facebook className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                  Facebook
+                </a>
+              ) : null}
+              {site.instagramUrl ? (
+                <a
+                  href={site.instagramUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 transition hover:text-teal-700 dark:hover:text-teal-400"
+                >
+                  <Instagram className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                  Instagram
                 </a>
               ) : null}
               {site.address ? (

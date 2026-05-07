@@ -144,6 +144,8 @@ model SiteSettings {
   aboutMarkdown String? @db.Text
   contactPhone  String?
   contactEmail  String?
+  facebookUrl   String?
+  instagramUrl  String?
   address       String?
   footerNote    String?
   /// White-label copy: nav badges, page titles, home feature cards, SEO, etc.

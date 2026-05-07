@@ -29,6 +29,8 @@ export function mergePublicSite(row: {
   aboutMarkdown: string | null
   contactPhone: string | null
   contactEmail: string | null
+  facebookUrl: string | null
+  instagramUrl: string | null
   address: string | null
   footerNote: string | null
   marketingContent: Prisma.JsonValue | null
@@ -99,6 +101,8 @@ export function mergePublicSite(row: {
     aboutMarkdown: row.aboutMarkdown,
     contactPhone: row.contactPhone,
     contactEmail: row.contactEmail,
+    facebookUrl: row.facebookUrl,
+    instagramUrl: row.instagramUrl,
     address: row.address,
     footerNote: row.footerNote,
     navBadge,

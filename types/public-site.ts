@@ -89,6 +89,8 @@ export type PublicSite = {
   aboutMarkdown: string | null
   contactPhone: string | null
   contactEmail: string | null
+  facebookUrl: string | null
+  instagramUrl: string | null
   address: string | null
   footerNote: string | null
   navBadge: string

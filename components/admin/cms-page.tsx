@@ -79,6 +79,8 @@ export function CmsPage() {
     aboutMarkdown: "",
     contactPhone: "",
     contactEmail: "",
+    facebookUrl: "",
+    instagramUrl: "",
     address: "",
     footerNote: "",
   })
@@ -96,6 +98,8 @@ export function CmsPage() {
       aboutMarkdown: d.site.aboutMarkdown ?? "",
       contactPhone: d.site.contactPhone ?? "",
       contactEmail: d.site.contactEmail ?? "",
+      facebookUrl: d.site.facebookUrl ?? "",
+      instagramUrl: d.site.instagramUrl ?? "",
       address: d.site.address ?? "",
       footerNote: d.site.footerNote ?? "",
     })
@@ -130,6 +134,8 @@ export function CmsPage() {
           aboutMarkdown: site.aboutMarkdown || null,
           contactPhone: site.contactPhone || null,
           contactEmail: site.contactEmail || null,
+          facebookUrl: site.facebookUrl || null,
+          instagramUrl: site.instagramUrl || null,
           address: site.address || null,
           footerNote: site.footerNote || null,
           marketingContent: marketing,
@@ -248,6 +254,22 @@ export function CmsPage() {
                 <Input
                   value={site.contactEmail}
                   onChange={(e) => setSite((s) => ({ ...s, contactEmail: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Facebook page URL</Label>
+                <Input
+                  placeholder="https://facebook.com/yourpage"
+                  value={site.facebookUrl}
+                  onChange={(e) => setSite((s) => ({ ...s, facebookUrl: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Instagram page URL</Label>
+                <Input
+                  placeholder="https://instagram.com/yourpage"
+                  value={site.instagramUrl}
+                  onChange={(e) => setSite((s) => ({ ...s, instagramUrl: e.target.value }))}
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
