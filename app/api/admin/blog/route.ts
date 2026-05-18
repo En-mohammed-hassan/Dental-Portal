@@ -25,8 +25,11 @@ const postSchema = z.object({
     .refine((s) => s.length >= 2, { message: "Slug must be at least 2 characters (letters, numbers, hyphens)" })
     .refine((s) => /^[a-z0-9-]+$/.test(s), { message: "Slug can only use lowercase letters, numbers, and hyphens" }),
   title: z.string().trim().min(1, "Title is required"),
+  titleAr: z.string().nullable().optional(),
   excerpt: z.string().nullable().optional(),
+  excerptAr: z.string().nullable().optional(),
   content: z.string().trim().min(1, "Content is required"),
+  contentAr: z.string().nullable().optional(),
   coverImageBase64: optionalStoredImageSchema,
   published: z.boolean().optional(),
 })
@@ -60,8 +63,11 @@ export async function POST(request: Request) {
       data: {
         slug: parsed.data.slug,
         title: parsed.data.title,
+        titleAr: parsed.data.titleAr ?? null,
         excerpt: parsed.data.excerpt ?? null,
+        excerptAr: parsed.data.excerptAr ?? null,
         content: parsed.data.content,
+        contentAr: parsed.data.contentAr ?? null,
         coverImageBase64:
           parsed.data.coverImageBase64 === ""
             ? null

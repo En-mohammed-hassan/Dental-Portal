@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion"
 import { Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { PatientCard } from "@/components/reservations/patient-card"
 import { PatientFormDialog } from "@/components/reservations/patient-form-dialog"
@@ -23,16 +24,13 @@ import { BookingTypeFilterSelect } from "@/components/ui/booking-type-filter"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { PatientBillingPanel } from "@/components/billing/patient-billing-summary"
+import { formatMoneyFromCents } from "@/lib/format"
+import { majorUnitsToCents } from "@/lib/money"
+import { parseLocale } from "@/lib/locale"
 import { useReservationsStore } from "@/store/use-reservations-store"
-import { type BookingType, type PaymentStatusLabel } from "@/types/patient"
+import { type BookingType } from "@/types/patient"
 
 const listAnimation = {
   initial: { opacity: 0, y: 12 },
@@ -42,6 +40,8 @@ const listAnimation = {
 }
 
 export function ReservationsPageContent() {
+  const { t, i18n } = useTranslation(["admin", "common"])
+  const locale = parseLocale(i18n.language)
   const {
     currentPatient,
     waitingPatients,
@@ -66,8 +66,8 @@ export function ReservationsPageContent() {
   const [treatmentNote, setTreatmentNote] = useState("")
   const [xrayImageBase64, setXrayImageBase64] = useState<string | null>(null)
   const [xrayPreview, setXrayPreview] = useState<string | null>(null)
-  const [feeInput, setFeeInput] = useState("")
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusLabel | "none">("none")
+  const [chargeInput, setChargeInput] = useState("")
+  const [paymentInput, setPaymentInput] = useState("")
   const [canalsCount, setCanalsCount] = useState(0)
   const [teethTreated, setTeethTreated] = useState<string[]>([])
   const [procedureSummary, setProcedureSummary] = useState("")
@@ -110,7 +110,7 @@ export function ReservationsPageContent() {
     const success = await startTreatment(patientId, true)
     if (!success) {
       setFeedbackDialogMessage(
-        useReservationsStore.getState().errorMessage ?? "Failed to start treatment."
+        useReservationsStore.getState().errorMessage ?? t("reservations.startFailed")
       )
     }
   }
@@ -128,37 +128,56 @@ export function ReservationsPageContent() {
     const canceled = await cancelReservation(patientId)
     if (!canceled) {
       setFeedbackDialogMessage(
-        useReservationsStore.getState().errorMessage ??
-          "Reservation cancellation was not allowed."
+        useReservationsStore.getState().errorMessage ?? t("reservations.cancelNotAllowed")
       )
     }
   }
 
+  const currentTotalCharged = currentPatient?.totalChargedCents ?? 0
+  const currentTotalPaid = currentPatient?.totalPaidCents ?? 0
+  const currentBalanceCents = Math.max(
+    0,
+    currentTotalCharged - currentTotalPaid
+  )
+
+  const chargePreviewCents = useMemo(
+    () => majorUnitsToCents(chargeInput) ?? 0,
+    [chargeInput]
+  )
+  const paymentPreviewCents = useMemo(
+    () => majorUnitsToCents(paymentInput) ?? 0,
+    [paymentInput]
+  )
+
+  const projectedBalanceCents = useMemo(() => {
+    return Math.max(0, currentBalanceCents + chargePreviewCents - paymentPreviewCents)
+  }, [currentBalanceCents, chargePreviewCents, paymentPreviewCents])
+
   const handleFinishTreatment = async () => {
-    const feeTrim = feeInput.trim()
-    let feeCents: number | null = null
-    if (feeTrim) {
-      const n = Number.parseFloat(feeTrim.replace(",", "."))
-      if (!Number.isFinite(n) || n < 0) {
-        setFeedbackDialogMessage("Fee must be a valid positive number.")
-        return
-      }
-      feeCents = Math.round(n * 100)
+    const chargeCents = majorUnitsToCents(chargeInput)
+    const paymentCents = majorUnitsToCents(paymentInput)
+
+    if (chargeInput.trim() && chargeCents == null) {
+      setFeedbackDialogMessage(t("reservations.feeInvalid"))
+      return
+    }
+    if (paymentInput.trim() && paymentCents == null) {
+      setFeedbackDialogMessage(t("reservations.feeInvalid"))
+      return
     }
 
     const ok = await finishTreatment({
       treatmentNote,
       xrayImageBase64,
-      feeCents,
-      paymentStatus: paymentStatus === "none" ? null : paymentStatus,
+      chargeCents,
+      paymentCents,
       canalsCount,
       teethTreated: teethTreated.length ? teethTreated : null,
       procedureSummary: procedureSummary.trim() || null,
     })
     if (!ok) {
       setFeedbackDialogMessage(
-        useReservationsStore.getState().errorMessage ??
-          "Failed to finish treatment. Please try again."
+        useReservationsStore.getState().errorMessage ?? t("reservations.finishFailed")
       )
       return
     }
@@ -166,8 +185,8 @@ export function ReservationsPageContent() {
     setTreatmentNote("")
     setXrayImageBase64(null)
     setXrayPreview(null)
-    setFeeInput("")
-    setPaymentStatus("none")
+    setChargeInput("")
+    setPaymentInput("")
     setCanalsCount(0)
     setTeethTreated([])
     setProcedureSummary("")
@@ -178,12 +197,12 @@ export function ReservationsPageContent() {
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
-      setFeedbackDialogMessage("Please choose a valid image file")
+      setFeedbackDialogMessage(t("reservations.imageInvalid"))
       return
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      setFeedbackDialogMessage("X-ray image must be 2MB or smaller")
+      setFeedbackDialogMessage(t("reservations.xrayTooLarge"))
       return
     }
 
@@ -196,11 +215,11 @@ export function ReservationsPageContent() {
         }
       }
       reader.onerror = () => {
-        setFeedbackDialogMessage("Failed to process image")
+        setFeedbackDialogMessage(t("reservations.imageProcessFailed"))
       }
       reader.readAsDataURL(file)
     } catch {
-      setFeedbackDialogMessage("Failed to process image")
+      setFeedbackDialogMessage(t("reservations.imageProcessFailed"))
     }
   }
 
@@ -209,10 +228,8 @@ export function ReservationsPageContent() {
       <header className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Reservations Dashboard</h1>
-            <p className="text-muted-foreground text-sm">
-              Manage treatment flow and queue status with a modern real-time board.
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight">{t("reservations.title")}</h1>
+            <p className="text-muted-foreground text-sm">{t("reservations.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
             <PatientFormDialog onSubmitReservation={addReservation} isProcessing={isProcessing} />
@@ -232,19 +249,19 @@ export function ReservationsPageContent() {
       >
         <div className="space-y-1.5">
           <Label className="text-muted-foreground text-xs" htmlFor="queue-search">
-            Search
+            {t("reservations.search")}
           </Label>
           <Input
             disabled={isLoading || isProcessing}
             id="queue-search"
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Name or phone"
+            placeholder={t("reservations.searchPlaceholder")}
             value={searchTerm}
           />
         </div>
         <div className="space-y-1.5">
           <Label className="text-muted-foreground text-xs" htmlFor="queue-booking-type">
-            Booking type
+            {t("reservations.bookingType")}
           </Label>
           <BookingTypeFilterSelect
             disabled={isLoading || isProcessing}
@@ -259,25 +276,25 @@ export function ReservationsPageContent() {
         <SectionContainer
           accentClassName="bg-green-600 text-white"
           count={currentPatient ? 1 : 0}
-          title="Current Patient"
+          title={t("reservations.currentPatient")}
         >
           <AnimatePresence mode="popLayout">
             {currentPatient ? (
-              <motion.div key={currentPatient.id} {...listAnimation}>
+              <div key={currentPatient.id} {...listAnimation}>
                 <PatientCard
                   actionsDisabled={isLoading || isProcessing}
                   onFinishTreatment={() => setFinishDialogOpen(true)}
                   patient={currentPatient}
                   variant="current"
                 />
-              </motion.div>
+              </div>
             ) : (
               <motion.p
                 key="no-current"
                 className="text-muted-foreground text-sm"
                 {...listAnimation}
               >
-                No patient is currently in treatment.
+                {t("reservations.noCurrent")}
               </motion.p>
             )}
           </AnimatePresence>
@@ -286,7 +303,7 @@ export function ReservationsPageContent() {
         <SectionContainer
           accentClassName="bg-amber-500 text-white"
           count={filteredWaiting.length}
-          title="Waiting Patients"
+          title={t("reservations.waitingPatients")}
         >
           <AnimatePresence mode="popLayout">
             {filteredWaiting.length ? (
@@ -307,7 +324,7 @@ export function ReservationsPageContent() {
                 className="text-muted-foreground text-sm"
                 {...listAnimation}
               >
-                No waiting patients match the current filters.
+                {t("reservations.noWaiting")}
               </motion.p>
             )}
           </AnimatePresence>
@@ -316,7 +333,7 @@ export function ReservationsPageContent() {
         <SectionContainer
           accentClassName="bg-blue-600 text-white"
           count={filteredUpcoming.length}
-          title="Upcoming Patients"
+          title={t("reservations.upcomingPatients")}
         >
           <AnimatePresence mode="popLayout">
             {filteredUpcoming.length ? (
@@ -337,7 +354,7 @@ export function ReservationsPageContent() {
                 className="text-muted-foreground text-sm"
                 {...listAnimation}
               >
-                No upcoming patients match the current filters.
+                {t("reservations.noUpcoming")}
               </motion.p>
             )}
           </AnimatePresence>
@@ -347,15 +364,12 @@ export function ReservationsPageContent() {
       <AlertDialog onOpenChange={setReplaceDialogOpen} open={replaceDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Replace current patient?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A patient is currently being treated. If you continue, that patient
-              will be moved back to the waiting list.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("reservations.replaceTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("reservations.replaceDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingStartPatientId(null)}>
-              Keep Current
+              {t("reservations.keepCurrent")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -365,7 +379,7 @@ export function ReservationsPageContent() {
                 setPendingStartPatientId(null)
               }}
             >
-              Replace & Start
+              {t("reservations.replaceStart")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -379,12 +393,12 @@ export function ReservationsPageContent() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Action Required</AlertDialogTitle>
+            <AlertDialogTitle>{t("reservations.actionRequired")}</AlertDialogTitle>
             <AlertDialogDescription>{feedbackDialogMessage ?? ""}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setFeedbackDialogMessage(null)}>
-              OK
+              {t("reservations.ok")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -393,87 +407,84 @@ export function ReservationsPageContent() {
       <AlertDialog onOpenChange={setFinishDialogOpen} open={finishDialogOpen}>
         <AlertDialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Finish treatment with required note</AlertDialogTitle>
-            <AlertDialogDescription>
-              Add a clear treatment summary. This note is required and saved in History.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("reservations.finishTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("reservations.finishDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="max-h-[min(70vh,32rem)] space-y-4 overflow-y-auto pr-1">
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="treatment-note">
-                Treatment note
+                {t("reservations.treatmentNote")}
               </label>
               <Textarea
                 disabled={isProcessing}
                 id="treatment-note"
                 minLength={5}
                 onChange={(event) => setTreatmentNote(event.target.value)}
-                placeholder="Example: RCT completed under rubber dam; patient advised on post-op care."
+                placeholder={t("reservations.treatmentNotePlaceholder")}
                 value={treatmentNote}
               />
               {treatmentNote.trim().length > 0 && treatmentNote.trim().length < 5 && (
-                <p className="text-sm text-red-600">Note must be at least 5 characters.</p>
+                <p className="text-sm text-red-600">{t("reservations.noteMinLength")}</p>
               )}
             </div>
 
+            <PatientBillingPanel
+              totalChargedCents={currentTotalCharged + chargePreviewCents}
+              totalPaidCents={currentTotalPaid + paymentPreviewCents}
+              balanceDueCents={currentBalanceCents}
+              projectedBalanceCents={projectedBalanceCents}
+              locale={locale}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="procedure-summary">Procedure (short)</Label>
+                <Label htmlFor="procedure-summary">{t("reservations.procedureShort")}</Label>
                 <Input
                   disabled={isProcessing}
                   id="procedure-summary"
                   maxLength={120}
                   onChange={(e) => setProcedureSummary(e.target.value)}
-                  placeholder="e.g. RCT, Composite, Extraction"
+                  placeholder={t("reservations.procedurePlaceholder")}
                   value={procedureSummary}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="fee-input">Fee (optional)</Label>
+                <Label htmlFor="charge-input">{t("reservations.treatmentCharge")}</Label>
                 <Input
                   disabled={isProcessing}
-                  id="fee-input"
+                  id="charge-input"
                   inputMode="decimal"
-                  onChange={(e) => setFeeInput(e.target.value)}
-                  placeholder="0.00 — major units"
-                  value={feeInput}
+                  onChange={(e) => setChargeInput(e.target.value)}
+                  placeholder={t("reservations.treatmentChargePlaceholder")}
+                  value={chargeInput}
                 />
-                <p className="text-muted-foreground text-xs">Stored precisely as cents on the server.</p>
+                <p className="text-muted-foreground text-xs">{t("reservations.chargeHint")}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment-input">{t("reservations.paymentReceived")}</Label>
+                <Input
+                  disabled={isProcessing}
+                  id="payment-input"
+                  inputMode="decimal"
+                  onChange={(e) => setPaymentInput(e.target.value)}
+                  placeholder={t("reservations.paymentReceivedPlaceholder")}
+                  value={paymentInput}
+                />
+                <p className="text-muted-foreground text-xs">{t("reservations.paymentHint")}</p>
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Payment status</Label>
-                <Select
-                  disabled={isProcessing}
-                  value={paymentStatus}
-                  onValueChange={(v) => setPaymentStatus(v as PaymentStatusLabel | "none")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Not recorded" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Not recorded</SelectItem>
-                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="canals-count">Canals count (0–8)</Label>
-                <Input
-                  disabled={isProcessing}
-                  id="canals-count"
-                  max={8}
-                  min={0}
-                  type="number"
-                  value={Number.isNaN(canalsCount) ? 0 : canalsCount}
-                  onChange={(e) => setCanalsCount(Math.min(8, Math.max(0, Number(e.target.value) || 0)))}
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-              </div>
+            <div className="space-y-2 sm:max-w-xs">
+              <Label htmlFor="canals-count">{t("reservations.canalsCount")}</Label>
+              <Input
+                disabled={isProcessing}
+                id="canals-count"
+                max={8}
+                min={0}
+                type="number"
+                value={Number.isNaN(canalsCount) ? 0 : canalsCount}
+                onChange={(e) => setCanalsCount(Math.min(8, Math.max(0, Number(e.target.value) || 0)))}
+                onFocus={(e) => e.currentTarget.select()}
+              />
             </div>
 
             <TeethTreatedPicker
@@ -484,7 +495,7 @@ export function ReservationsPageContent() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium" htmlFor="xray-image">
-                X-ray Image (Optional)
+                {t("reservations.xrayOptional")}
               </label>
               <input
                 accept="image/*"
@@ -498,7 +509,7 @@ export function ReservationsPageContent() {
                 <div className="space-y-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    alt="X-ray preview"
+                    alt={t("reservations.xrayPreviewAlt")}
                     className="h-32 w-32 rounded-md border object-cover"
                     src={xrayPreview}
                   />
@@ -512,14 +523,14 @@ export function ReservationsPageContent() {
                     type="button"
                     variant="outline"
                   >
-                    Remove Image
+                    {t("reservations.removeImage")}
                   </Button>
                 </div>
               )}
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common:actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="disabled:pointer-events-none disabled:opacity-50"
               disabled={isProcessing || treatmentNote.trim().length < 5}
@@ -528,10 +539,10 @@ export function ReservationsPageContent() {
               {isProcessing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving…
+                  {t("common:actions.loading")}
                 </>
               ) : (
-                "Finish & save note"
+                t("reservations.finishSave")
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

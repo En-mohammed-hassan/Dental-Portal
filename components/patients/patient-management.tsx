@@ -6,6 +6,7 @@ import { type CountryCode } from "libphonenumber-js"
 import { type ChangeEvent, useEffect, useMemo, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import toast from "react-hot-toast"
+import { useTranslation } from "react-i18next"
 import { z } from "zod"
 
 import {
@@ -43,7 +44,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { PatientBillingPanel } from "@/components/billing/patient-billing-summary"
 import { LinkedReservationsDialog } from "@/components/patients/linked-reservations-dialog"
+import { formatMoneyFromCents } from "@/lib/format"
+import { parseLocale } from "@/lib/locale"
 import { BLOOD_TYPES, type PatientProfile } from "@/types/patient"
 
 const PAGE_SIZE = 6
@@ -101,6 +105,8 @@ const resetFormState = () => ({
 })
 
 export function PatientManagement() {
+  const { t, i18n } = useTranslation(["admin", "common"])
+  const locale = parseLocale(i18n.language)
   // State management
   const [patients, setPatients] = useState<PatientProfile[]>([])
   const [search, setSearch] = useState("")
@@ -142,12 +148,12 @@ export function PatientManagement() {
       })
       if (!response.ok) {
         const result = (await response.json()) as { message?: string }
-        throw new Error(result.message ?? "Failed to load patients")
+        throw new Error(result.message ?? t("patients.loadFailed"))
       }
       const data = (await response.json()) as { data?: PatientProfile[] }
       setPatients(data.data ?? [])
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load patients"
+      const message = error instanceof Error ? error.message : t("patients.loadFailed")
       toast.error(message)
       setPatients([])
     } finally {
@@ -186,7 +192,7 @@ export function PatientManagement() {
 
     try {
       if (!isValidForCountry(phoneCountry, phoneLocal)) {
-        throw new Error("Phone number is not valid for selected country.")
+        throw new Error(t("patients.phoneInvalid"))
       }
       const normalizedPhone = buildE164FromCountryAndLocal(phoneCountry, phoneLocal)
       const response = await fetch(endpoint, {
@@ -198,7 +204,7 @@ export function PatientManagement() {
 
       const result = (await response.json()) as { data?: PatientProfile; message?: string }
       if (!response.ok) {
-        const message = result.message ?? "Failed to save patient"
+        const message = result.message ?? t("patients.saveFailed")
         setErrorMessage(message)
         toast.error(message)
         setIsSubmitting(false)
@@ -211,22 +217,25 @@ export function PatientManagement() {
         setPatients((prev) =>
           prev.map((p) => (p.id === result.data!.id ? result.data! : p))
         )
-        toast.success("Patient updated successfully")
+        toast.success(t("patients.updated"))
       } else if (editorMode === "create" && result.data) {
         // Add new patient to the list (at the beginning)
         setPatients((prev) => [result.data!, ...prev])
-        toast.success("Patient created successfully")
+        toast.success(t("patients.created"))
       } else {
         // Fallback: refetch if we don't have the data
         await loadPatients()
-        toast.success(editorMode === "edit" ? "Patient updated successfully" : "Patient created successfully")
+        toast.success(
+          editorMode === "edit" ? t("patients.updated") : t("patients.created")
+        )
       }
 
       form.reset(resetFormState())
       setSelectedPatient(null)
       setEditorOpen(false)
+      await loadPatients()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to save patient"
+      const message = error instanceof Error ? error.message : t("patients.saveFailed")
       setErrorMessage(message)
       toast.error(message)
     } finally {
@@ -240,14 +249,14 @@ export function PatientManagement() {
 
     setErrorMessage(null)
     if (!file.type.startsWith("image/")) {
-      const message = "Please choose a valid image file"
+      const message = t("reservations.imageInvalid")
       setErrorMessage(message)
       toast.error(message)
       return
     }
 
     if (file.size > MAX_XRAY_SIZE_BYTES) {
-      const message = "X-ray image must be 2MB or smaller"
+      const message = t("reservations.xrayTooLarge")
       setErrorMessage(message)
       toast.error(message)
       return
@@ -259,9 +268,9 @@ export function PatientManagement() {
         shouldDirty: true,
         shouldValidate: true,
       })
-      toast.success("X-ray image uploaded successfully")
+      toast.success(t("patients.xrayUploaded"))
     } catch {
-      const message = "Failed to process image"
+      const message = t("reservations.imageProcessFailed")
       setErrorMessage(message)
       toast.error(message)
     }
@@ -279,7 +288,7 @@ export function PatientManagement() {
       const result = (await response.json()) as { message?: string }
 
       if (!response.ok) {
-        const message = result.message ?? "Failed to delete patient"
+        const message = result.message ?? t("patients.deleteFailed")
         setErrorMessage(message)
         toast.error(message)
         setIsDeleting(false)
@@ -288,9 +297,9 @@ export function PatientManagement() {
 
       setDeletePatientId(null)
       await loadPatients()
-      toast.success("Patient deleted successfully")
+      toast.success(t("patients.deleted"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to delete patient"
+      const message = error instanceof Error ? error.message : t("patients.deleteFailed")
       setErrorMessage(message)
       toast.error(message)
     } finally {
@@ -347,24 +356,24 @@ export function PatientManagement() {
         <Card className="backdrop-blur-sm">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Patient Directory</CardTitle>
+              <CardTitle>{t("patients.directory")}</CardTitle>
               <Button disabled={isSubmitting || isDeleting} onClick={openCreate} type="button">
-                Add Patient
+                {t("patients.addPatient")}
               </Button>
             </div>
             <Input
               disabled={isLoadingPatients || isSubmitting || isDeleting}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name or phone"
+              placeholder={t("patients.searchPlaceholder")}
               value={search}
             />
           </CardHeader>
           <CardContent className="space-y-2">
             {patients.length === 0 && !isLoadingPatients && (
-              <p className="text-muted-foreground text-sm">No patients found.</p>
+              <p className="text-muted-foreground text-sm">{t("patients.noPatients")}</p>
             )}
             {isLoadingPatients && (
-              <p className="text-muted-foreground text-sm">Loading patients...</p>
+              <p className="text-muted-foreground text-sm">{t("patients.loading")}</p>
             )}
             <AnimatePresence mode="popLayout">
               {paginatedPatients.map((patient, index) => (
@@ -398,14 +407,21 @@ export function PatientManagement() {
                     </button>
                   ) : (
                     <div className="bg-muted text-muted-foreground flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md border text-[10px]">
-                      No X-ray
+                      {t("patients.noXray")}
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{patient.name}</p>
                     <p className="text-muted-foreground text-xs sm:text-sm">
-                      <span className="break-all">{patient.phone}</span> • {patient.age} years •{" "}
-                      {patient.bloodType}
+                      <span className="break-all">{patient.phone}</span> • {patient.age}{" "}
+                      {t("patients.years")} • {patient.bloodType}
+                      {(patient.balanceDueCents ?? 0) > 0 && (
+                        <>
+                          {" "}
+                          • {t("billing.balanceOwed")}:{" "}
+                          {formatMoneyFromCents(patient.balanceDueCents ?? 0, locale)}
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -422,7 +438,7 @@ export function PatientManagement() {
                     size="sm"
                     variant="outline"
                   >
-                    Edit
+                    {t("patients.edit")}
                   </Button>
                   <Button
                     disabled={isSubmitting || isDeleting}
@@ -433,7 +449,7 @@ export function PatientManagement() {
                     size="sm"
                     variant="destructive"
                   >
-                    Delete
+                    {t("common:actions.delete")}
                   </Button>
                 </div>
               </motion.div>
@@ -448,10 +464,10 @@ export function PatientManagement() {
                   type="button"
                   variant="outline"
                 >
-                  Previous
+                  {t("common:actions.previous")}
                 </Button>
                 <span className="text-muted-foreground text-xs">
-                  Page {page} / {totalPages}
+                  {t("patients.pageOf", { page, total: totalPages })}
                 </span>
                 <Button
                   disabled={page === totalPages}
@@ -460,7 +476,7 @@ export function PatientManagement() {
                   type="button"
                   variant="outline"
                 >
-                  Next
+                  {t("common:actions.next")}
                 </Button>
               </div>
             )}
@@ -481,19 +497,27 @@ export function PatientManagement() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editorMode === "edit" ? "Edit Patient" : "Add Patient"}</DialogTitle>
-            <DialogDescription>
-              Maintain your master patient profile list for reservation usage.
-            </DialogDescription>
+            <DialogTitle>
+              {editorMode === "edit" ? t("patients.editPatient") : t("patients.addPatientDialog")}
+            </DialogTitle>
+            <DialogDescription>{t("patients.dialogDesc")}</DialogDescription>
           </DialogHeader>
+          {editorMode === "edit" && selectedPatient ? (
+            <PatientBillingPanel
+              totalChargedCents={selectedPatient.totalChargedCents ?? 0}
+              totalPaidCents={selectedPatient.totalPaidCents ?? 0}
+              balanceDueCents={selectedPatient.balanceDueCents ?? 0}
+              locale={locale}
+            />
+          ) : null}
           <form className="space-y-3" onSubmit={form.handleSubmit(submit)}>
             <div className="space-y-1">
-              <Label htmlFor="patient-name">Name</Label>
+              <Label htmlFor="patient-name">{t("patients.name")}</Label>
               <Input disabled={isSubmitting} id="patient-name" {...form.register("name")} />
               {formError.name && <p className="text-sm text-red-600">{formError.name.message}</p>}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-phone">Phone</Label>
+              <Label htmlFor="patient-phone">{t("patients.phone")}</Label>
               <PhoneCountryField
                 country={phoneCountry}
                 localNumber={phoneLocal}
@@ -508,7 +532,7 @@ export function PatientManagement() {
               )}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-age">Age</Label>
+              <Label htmlFor="patient-age">{t("patients.age")}</Label>
               <Input
                 disabled={isSubmitting}
                 id="patient-age"
@@ -520,7 +544,7 @@ export function PatientManagement() {
               {formError.age && <p className="text-sm text-red-600">{formError.age.message}</p>}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-blood">Blood Type</Label>
+              <Label htmlFor="patient-blood">{t("patients.bloodType")}</Label>
               <Controller
                 control={form.control}
                 name="bloodType"
@@ -531,7 +555,7 @@ export function PatientManagement() {
                     onValueChange={field.onChange}
                   >
                     <SelectTrigger className="w-full" id="patient-blood">
-                      <SelectValue placeholder="Blood type" />
+                      <SelectValue placeholder={t("patients.bloodType")} />
                     </SelectTrigger>
                     <SelectContent>
                       {BLOOD_TYPES.map((bloodType) => (
@@ -548,7 +572,7 @@ export function PatientManagement() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="patient-xray">X-ray Image (optional)</Label>
+              <Label htmlFor="patient-xray">{t("patients.xrayOptional")}</Label>
               <input
                 accept="image/*"
                 className="text-sm file:mr-3 file:rounded-md file:border file:px-3 file:py-1.5"
@@ -576,11 +600,11 @@ export function PatientManagement() {
                     type="button"
                     variant="outline"
                   >
-                    Remove Image
+                    {t("reservations.removeImage")}
                   </Button>
                 </div>
               ) : (
-                <p className="text-muted-foreground text-xs">No image uploaded</p>
+                <p className="text-muted-foreground text-xs">{t("patients.noImage")}</p>
               )}
               {formError.xrayImageBase64 && (
                 <p className="text-sm text-red-600">{formError.xrayImageBase64.message}</p>
@@ -590,10 +614,10 @@ export function PatientManagement() {
             <LoadingButton
               className="w-full"
               loading={isSubmitting}
-              loadingText="Saving…"
+              loadingText={t("common:actions.loading")}
               type="submit"
             >
-              {editorMode === "edit" ? "Update patient" : "Add patient"}
+              {editorMode === "edit" ? t("patients.updatePatient") : t("patients.addPatientBtn")}
             </LoadingButton>
           </form>
         </DialogContent>
@@ -610,8 +634,8 @@ export function PatientManagement() {
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{previewXrayTitle || "Patient X-ray"}</DialogTitle>
-            <DialogDescription>Click outside to close preview.</DialogDescription>
+            <DialogTitle>{previewXrayTitle || t("patients.xrayPreview")}</DialogTitle>
+            <DialogDescription>{t("patients.closePreview")}</DialogDescription>
           </DialogHeader>
           {previewXrayImage && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -642,20 +666,17 @@ export function PatientManagement() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete patient?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. You can only delete patients that do not
-              have reservations linked to them.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("patients.deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("patients.deleteDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common:actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="disabled:pointer-events-none disabled:opacity-50"
               disabled={isDeleting}
               onClick={() => void removePatient()}
             >
-              {isDeleting ? "Deleting..." : "Yes, Delete"}
+              {isDeleting ? t("patients.deleting") : t("patients.yesDelete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

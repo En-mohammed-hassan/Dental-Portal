@@ -2,11 +2,13 @@
 
 import Link from "next/link"
 import { Facebook, Instagram, Mail, MapPin, Phone } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { useSiteContent } from "@/components/marketing/site-content-context"
 import { cn } from "@/lib/utils"
 
 export function MarketingFooter() {
+  const { t } = useTranslation(["common", "marketing"])
   const site = useSiteContent()
   const year = new Date().getFullYear()
 
@@ -50,7 +52,7 @@ export function MarketingFooter() {
                   className="flex items-center gap-2 transition hover:text-teal-700 dark:hover:text-teal-400"
                 >
                   <Facebook className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
-                  Facebook
+                  {t("social.facebook", { ns: "common" })}
                 </a>
               ) : null}
               {site.instagramUrl ? (
@@ -61,7 +63,7 @@ export function MarketingFooter() {
                   className="flex items-center gap-2 transition hover:text-teal-700 dark:hover:text-teal-400"
                 >
                   <Instagram className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
-                  Instagram
+                  {t("social.instagram", { ns: "common" })}
                 </a>
               ) : null}
               {site.address ? (
@@ -80,15 +82,18 @@ export function MarketingFooter() {
 
           <div>
             <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-              Quick links
+              {t("footer.quickLinks", { ns: "common" })}
             </p>
             <nav className="mt-4 flex flex-col gap-2 text-sm">
               {[
-                { href: "/services", label: "Services" },
-                { href: "/blog", label: "Blog" },
-                { href: "/gallery", label: "Gallery" },
-                { href: "/book", label: "Book" },
-                { href: "/sign-in?mode=patient", label: "Patient sign in" },
+                { href: "/services", label: t("nav.services", { ns: "common" }) },
+                { href: "/blog", label: t("nav.blog", { ns: "common" }) },
+                { href: "/gallery", label: t("nav.gallery", { ns: "common" }) },
+                { href: "/book", label: t("nav.book", { ns: "common" }) },
+                {
+                  href: "/sign-in?mode=patient",
+                  label: t("footer.patientSignIn", { ns: "marketing" }),
+                },
               ].map((l) => (
                 <Link
                   key={l.href}

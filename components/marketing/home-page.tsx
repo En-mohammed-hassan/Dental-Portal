@@ -20,7 +20,7 @@ export function HomePage() {
 
         <div className="relative mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
             className="space-y-6"
@@ -64,7 +64,7 @@ export function HomePage() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
+            initial={false}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.08 }}
             className="relative aspect-[4/5] overflow-hidden rounded-[2rem] border border-white/40 bg-gradient-to-br from-teal-100 via-white to-fuchsia-100 shadow-2xl dark:border-slate-800 dark:from-slate-900 dark:via-slate-950 dark:to-teal-950"

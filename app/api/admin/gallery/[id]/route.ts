@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic"
 const patchSchema = z.object({
   imageBase64: requiredStoredImageSchema.optional(),
   caption: z.string().nullable().optional(),
+  captionAr: z.string().nullable().optional(),
   sortOrder: z.coerce.number().int().optional(),
 })
 
@@ -33,6 +34,7 @@ export async function PATCH(
       where: { id },
       data: {
         ...(p.caption !== undefined ? { caption: p.caption } : {}),
+        ...(p.captionAr !== undefined ? { captionAr: p.captionAr } : {}),
         ...(p.sortOrder !== undefined ? { sortOrder: p.sortOrder } : {}),
         ...(p.imageBase64 !== undefined ? { imageBase64: p.imageBase64 } : {}),
       },

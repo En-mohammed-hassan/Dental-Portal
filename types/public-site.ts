@@ -1,7 +1,6 @@
 import { z } from "zod"
 
-/** Raw JSON from DB — partial overrides only; server merges with defaults. */
-export const marketingContentSchema = z.object({
+export const marketingContentLocaleSchema = z.object({
   nav: z
     .object({
       badge: z.string().max(80).optional(),
@@ -78,7 +77,14 @@ export const marketingContentSchema = z.object({
     .optional(),
 })
 
-export type MarketingContentInput = z.infer<typeof marketingContentSchema>
+export type MarketingContentInput = z.infer<typeof marketingContentLocaleSchema>
+
+export const marketingContentSchema = z.object({
+  en: marketingContentLocaleSchema.optional(),
+  ar: marketingContentLocaleSchema.optional(),
+})
+
+export type MarketingContentLocales = z.infer<typeof marketingContentSchema>
 
 /** Fully merged public payload for layout + client context. */
 export type PublicSite = {

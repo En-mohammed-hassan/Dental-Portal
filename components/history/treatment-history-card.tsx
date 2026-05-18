@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Trash2 } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import {
   AlertDialog,
@@ -24,13 +25,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useBookingTypeLabels } from "@/lib/i18n/use-admin-labels"
+import { formatMoneyFromCents } from "@/lib/format"
+import { parseLocale } from "@/lib/locale"
 import { useReservationsStore } from "@/store/use-reservations-store"
 import { type Patient } from "@/types/patient"
-import {
-  bookingTypeBadgeClass,
-  bookingTypeLabels,
-  formatAppointmentDate,
-} from "@/utils/patient"
+import { bookingTypeBadgeClass, formatAppointmentDate } from "@/utils/patient"
 
 interface TreatmentHistoryCardProps {
   record: Patient
@@ -45,13 +45,10 @@ function formatFee(cents: number | null | undefined) {
   })
 }
 
-const paymentLabels: Record<NonNullable<Patient["paymentStatus"]>, string> = {
-  unpaid: "Unpaid",
-  partial: "Partial",
-  paid: "Paid",
-}
-
 export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCardProps) {
+  const { t, i18n } = useTranslation(["admin", "common"])
+  const locale = parseLocale(i18n.language)
+  const bookingTypeLabels = useBookingTypeLabels()
   const { deleteReservationFromHistory, isProcessing } = useReservationsStore()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [xrayPreviewOpen, setXrayPreviewOpen] = useState(false)
@@ -64,7 +61,9 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
     }
   }
 
-  const feeLabel = formatFee(record.feeCents)
+  const feeLabel = formatFee(record.feeCents ?? record.chargeCents)
+  const chargeLabel = formatFee(record.chargeCents ?? record.feeCents)
+  const paymentLabel = formatFee(record.paymentCents)
 
   return (
     <>
@@ -95,13 +94,14 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
 
           <div className="grid grid-cols-2 gap-2 text-sm">
             <p>
-              <span className="text-muted-foreground">Age:</span> {record.age}
+              <span className="text-muted-foreground">{t("reservations.age")}:</span> {record.age}
             </p>
             <p>
-              <span className="text-muted-foreground">Blood:</span> {record.bloodType}
+              <span className="text-muted-foreground">{t("reservations.blood")}:</span>{" "}
+              {record.bloodType}
             </p>
             <p className="col-span-2">
-              <span className="text-muted-foreground">Completed:</span>{" "}
+              <span className="text-muted-foreground">{t("reservations.completed")}:</span>{" "}
               {record.completedAt ? formatAppointmentDate(record.completedAt) : "-"}
             </p>
           </div>
@@ -109,7 +109,7 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
           {record.xrayImageBase64 && (
             <div className="space-y-2">
               <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                X-ray Image
+                {t("history.xrayImage")}
               </p>
               <button
                 className="cursor-zoom-in w-full"
@@ -118,7 +118,7 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  alt="X-ray"
+                  alt={t("history.xrayImage")}
                   className="h-32 w-full rounded-md border object-cover hover:opacity-90 transition-opacity"
                   src={record.xrayImageBase64}
                 />
@@ -130,43 +130,50 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
             <div className="grid grid-cols-1 gap-2 rounded-md border bg-white/40 p-2 text-sm dark:bg-slate-900/30 sm:grid-cols-2">
               {record.procedureSummary ? (
                 <p>
-                  <span className="text-muted-foreground">Procedure:</span> {record.procedureSummary}
+                  <span className="text-muted-foreground">{t("history.procedure")}:</span>{" "}
+                  {record.procedureSummary}
                 </p>
               ) : null}
               {record.canalsCount != null ? (
                 <p>
-                  <span className="text-muted-foreground">Canals:</span> {record.canalsCount}
+                  <span className="text-muted-foreground">{t("history.canals")}:</span>{" "}
+                  {record.canalsCount}
                 </p>
               ) : null}
               {record.teethTreated && record.teethTreated.length > 0 ? (
                 <div className="space-y-2 sm:col-span-2">
                   <p>
-                    <span className="text-muted-foreground">Teeth (FDI):</span>{" "}
+                    <span className="text-muted-foreground">{t("history.teethFdi")}:</span>{" "}
                     {record.teethTreated.join(", ")}
                   </p>
                   <TeethTreatedPicker
                     readOnly
                     value={record.teethTreated}
                     onChange={() => undefined}
-                    triggerLabel="Open tooth chart"
-                    title={`Tooth chart · ${record.name}`}
-                    description="Review treated teeth from this completed session."
+                    triggerLabel={t("history.openToothChart")}
+                    title={t("history.toothChartTitle", { name: record.name })}
+                    description={t("history.toothChartDesc")}
                   />
                 </div>
               ) : null}
             </div>
           )}
 
-          {(feeLabel || record.paymentStatus) && (
+          {(chargeLabel || paymentLabel || record.balanceAfterCents != null) && (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              {feeLabel ? (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
-                  Fee: {feeLabel}
+              {chargeLabel ? (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-900 dark:bg-blue-950/50 dark:text-blue-100">
+                  {t("billing.sessionCharge")}: {chargeLabel}
                 </span>
               ) : null}
-              {record.paymentStatus ? (
-                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                  {paymentLabels[record.paymentStatus]}
+              {paymentLabel ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
+                  {t("billing.sessionPayment")}: {paymentLabel}
+                </span>
+              ) : null}
+              {record.balanceAfterCents != null ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                  {t("billing.balanceAfter")}: {formatMoneyFromCents(record.balanceAfterCents, locale)}
                 </span>
               ) : null}
             </div>
@@ -174,9 +181,9 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
 
           <div className="rounded-md border bg-white/30 p-2 text-sm dark:bg-slate-900/30">
             <p className="text-muted-foreground mb-1 text-xs font-medium uppercase tracking-wide">
-              Treatment Note
+              {t("history.treatmentNote")}
             </p>
-            <p>{record.treatmentNote?.trim() || "No note provided."}</p>
+            <p>{record.treatmentNote?.trim() || t("history.noNote")}</p>
           </div>
         </CardContent>
       </Card>
@@ -184,20 +191,17 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
       <AlertDialog onOpenChange={setDeleteDialogOpen} open={deleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete reservation?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this reservation from history. This action cannot be
-              undone.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("history.deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("history.deleteDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common:actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               disabled={isProcessing}
               onClick={() => void handleDelete()}
             >
-              {isProcessing ? "Deleting..." : "Delete"}
+              {isProcessing ? t("patients.deleting") : t("common:actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -206,8 +210,8 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
       <Dialog onOpenChange={setXrayPreviewOpen} open={xrayPreviewOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>X-ray Image - {record.name}</DialogTitle>
-            <DialogDescription>Click outside to close preview.</DialogDescription>
+            <DialogTitle>{t("history.xrayTitle", { name: record.name })}</DialogTitle>
+            <DialogDescription>{t("patients.closePreview")}</DialogDescription>
           </DialogHeader>
           {record.xrayImageBase64 && (
             // eslint-disable-next-line @next/next/no-img-element

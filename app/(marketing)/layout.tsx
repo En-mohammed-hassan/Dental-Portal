@@ -7,13 +7,21 @@ import { getPublicSite } from "@/lib/server/public-site"
 export const dynamic = "force-dynamic"
 
 export async function generateMetadata(): Promise<Metadata> {
-  const site = await getPublicSite()
-  return {
-    title: {
-      default: site.metaTitle,
-      template: `%s · ${site.clinicName}`,
-    },
-    description: site.metaDescription,
+  try {
+    const site = await getPublicSite()
+    const title = site.metaTitle?.trim() || site.clinicName?.trim() || "Elkood Dental"
+    return {
+      title: {
+        default: title,
+        template: `%s · ${site.clinicName || title}`,
+      },
+      description: site.metaDescription,
+    }
+  } catch {
+    return {
+      title: "Elkood Dental",
+      description: "Online booking, patient portal, and staff dashboard.",
+    }
   }
 }
 

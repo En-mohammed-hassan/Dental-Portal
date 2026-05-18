@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion"
 import { useCallback, useEffect, useState } from "react"
 import toast from "react-hot-toast"
+import { useTranslation } from "react-i18next"
 
 import { TreatmentHistoryCard } from "@/components/history/treatment-history-card"
 import { SectionContainer } from "@/components/reservations/section-container"
@@ -30,6 +31,7 @@ type HistoryApiData = {
 }
 
 export function HistoryPageContent() {
+  const { t } = useTranslation(["admin", "common"])
   const [historySearch, setHistorySearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [historyBookingType, setHistoryBookingType] = useState<BookingType | "all">("all")
@@ -46,8 +48,8 @@ export function HistoryPageContent() {
   })
 
   useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedSearch(historySearch.trim()), 350)
-    return () => window.clearTimeout(t)
+    const timer = window.setTimeout(() => setDebouncedSearch(historySearch.trim()), 350)
+    return () => window.clearTimeout(timer)
   }, [historySearch])
 
   useEffect(() => {
@@ -79,14 +81,14 @@ export function HistoryPageContent() {
         message?: string
       }
       if (!res.ok) {
-        throw new Error(json.message ?? "Failed to load history")
+        throw new Error(json.message ?? t("history.loadFailed"))
       }
       if (!json.data) {
-        throw new Error("Invalid response")
+        throw new Error(t("history.invalidResponse"))
       }
       setData(json.data)
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Failed to load history"
+      const message = e instanceof Error ? e.message : t("history.loadFailed")
       toast.error(message)
       setData({
         items: [],
@@ -98,7 +100,7 @@ export function HistoryPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch, historyBookingType, historyFromDate, historyToDate])
+  }, [page, debouncedSearch, historyBookingType, historyFromDate, historyToDate, t])
 
   useEffect(() => {
     void loadHistory()
@@ -116,10 +118,8 @@ export function HistoryPageContent() {
   return (
     <div className="space-y-8 pb-4">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Treatment History</h2>
-        <p className="text-muted-foreground text-sm">
-          Server-paginated completed visits with search, filters, and clinical billing fields.
-        </p>
+        <h2 className="text-2xl font-bold tracking-tight">{t("history.title")}</h2>
+        <p className="text-muted-foreground text-sm">{t("history.subtitle")}</p>
       </div>
 
       <section
@@ -128,19 +128,19 @@ export function HistoryPageContent() {
       >
         <div className="space-y-1.5 md:col-span-2 xl:col-span-1">
           <Label className="text-muted-foreground text-xs" htmlFor="history-search">
-            Search
+            {t("history.search")}
           </Label>
           <Input
             disabled={loading}
             id="history-search"
             onChange={(event) => setHistorySearch(event.target.value)}
-            placeholder="Patient, phone, note, procedure…"
+            placeholder={t("history.searchPlaceholder")}
             value={historySearch}
           />
         </div>
         <div className="space-y-1.5">
           <Label className="text-muted-foreground text-xs" htmlFor="history-booking">
-            Booking type
+            {t("history.bookingType")}
           </Label>
           <BookingTypeFilterSelect
             disabled={loading}
@@ -151,7 +151,7 @@ export function HistoryPageContent() {
         </div>
         <div className="space-y-1.5">
           <Label className="text-muted-foreground text-xs" htmlFor="history-from">
-            Completed from
+            {t("history.completedFrom")}
           </Label>
           <Input
             disabled={loading}
@@ -163,7 +163,7 @@ export function HistoryPageContent() {
         </div>
         <div className="space-y-1.5">
           <Label className="text-muted-foreground text-xs" htmlFor="history-to">
-            Completed to
+            {t("history.completedTo")}
           </Label>
           <Input
             disabled={loading}
@@ -178,15 +178,15 @@ export function HistoryPageContent() {
       <SectionContainer
         accentClassName="bg-violet-600 text-white"
         count={data.total}
-        title="Completed Treatments"
+        title={t("history.completedTreatments")}
       >
         <div className="text-muted-foreground flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
           <p>
             {loading
-              ? "Loading…"
+              ? t("history.loading")
               : data.total === 0
-                ? "No records match."
-                : `Showing ${fromIdx}–${toIdx} of ${data.total}`}
+                ? t("history.noMatch")
+                : t("history.showing", { from: fromIdx, to: toIdx, total: data.total })}
           </p>
           {data.totalPages > 1 && (
             <div className="flex flex-wrap items-center gap-2">
@@ -197,10 +197,10 @@ export function HistoryPageContent() {
                 type="button"
                 variant="outline"
               >
-                Previous
+                {t("common:actions.previous")}
               </Button>
               <span className="tabular-nums">
-                Page {page} / {data.totalPages}
+                {t("history.pageOf", { page, total: data.totalPages })}
               </span>
               <Button
                 disabled={loading || page >= data.totalPages}
@@ -209,7 +209,7 @@ export function HistoryPageContent() {
                 type="button"
                 variant="outline"
               >
-                Next
+                {t("common:actions.next")}
               </Button>
             </div>
           )}
@@ -228,7 +228,7 @@ export function HistoryPageContent() {
               className="text-muted-foreground text-sm"
               {...listAnimation}
             >
-              No history records match your filters.
+              {t("history.noRecords")}
             </motion.p>
           ) : (
             <motion.p
@@ -236,7 +236,7 @@ export function HistoryPageContent() {
               className="text-muted-foreground text-sm"
               {...listAnimation}
             >
-              Loading history…
+              {t("history.loadingHistory")}
             </motion.p>
           )}
         </AnimatePresence>

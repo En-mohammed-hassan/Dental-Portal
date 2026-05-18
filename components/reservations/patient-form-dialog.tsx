@@ -5,6 +5,7 @@ import { Controller, useForm } from "react-hook-form"
 import { useEffect, useMemo, useState } from "react"
 import { type CountryCode } from "libphonenumber-js"
 import toast from "react-hot-toast"
+import { useTranslation } from "react-i18next"
 import { z } from "zod"
 
 import {
@@ -29,6 +30,7 @@ import {
   isValidForCountry,
   splitPhoneToCountryAndLocal,
 } from "@/lib/phone"
+import { useBookingTypeLabels } from "@/lib/i18n/use-admin-labels"
 import {
   Select,
   SelectContent,
@@ -43,7 +45,6 @@ import {
   type NewReservationInput,
   type PatientProfile,
 } from "@/types/patient"
-import { bookingTypeLabels } from "@/utils/patient"
 
 interface PatientFormDialogProps {
   onSubmitReservation: (payload: NewReservationInput) => Promise<void> | void
@@ -98,6 +99,8 @@ export function PatientFormDialog({
   onSubmitReservation,
   isProcessing = false,
 }: PatientFormDialogProps) {
+  const { t } = useTranslation(["admin", "common"])
+  const bookingTypeLabels = useBookingTypeLabels()
   const [open, setOpen] = useState(false)
   const [patientMode, setPatientMode] = useState<"existing" | "new">("existing")
   const [selectedPatientId, setSelectedPatientId] = useState("")
@@ -163,12 +166,12 @@ export function PatientFormDialog({
       const response = await fetch("/api/patients", { credentials: "include" })
       if (!response.ok) {
         const result = (await response.json()) as { message?: string }
-        throw new Error(result.message ?? "Failed to load patients")
+        throw new Error(result.message ?? t("patients.loadFailed"))
       }
       const data = (await response.json()) as { data?: PatientProfile[] }
       setAllPatients(data.data ?? [])
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load patients"
+      const message = error instanceof Error ? error.message : t("patients.loadFailed")
       toast.error(message)
       setAllPatients([])
     } finally {
@@ -184,12 +187,12 @@ export function PatientFormDialog({
       })
       if (!response.ok) {
         const result = (await response.json().catch(() => ({}))) as { message?: string }
-        throw new Error(result.message ?? "Failed to load slots")
+        throw new Error(result.message ?? t("reservationForm.loadSlotsFailed"))
       }
       const data = (await response.json()) as { slots?: AdminBookableSlot[] }
       setSlots(data.slots ?? [])
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load slots"
+      const message = error instanceof Error ? error.message : t("reservationForm.loadSlotsFailed")
       toast.error(message)
       setSlots([])
     } finally {
@@ -221,11 +224,11 @@ export function PatientFormDialog({
     const file = event.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith("image/")) {
-      toast.error("Please choose a valid image file")
+      toast.error(t("reservations.imageInvalid"))
       return
     }
     if (file.size > MAX_XRAY_SIZE_BYTES) {
-      toast.error("X-ray image must be 2MB or smaller")
+      toast.error(t("reservations.xrayTooLarge"))
       return
     }
     try {
@@ -240,7 +243,7 @@ export function PatientFormDialog({
       }
       reader.readAsDataURL(file)
     } catch {
-      toast.error("Failed to process image")
+      toast.error(t("reservations.imageProcessFailed"))
     }
   }
 
@@ -249,7 +252,7 @@ export function PatientFormDialog({
     setSlotError(null)
 
     if (patientMode === "existing" && !selectedPatientId) {
-      const message = "Please select a patient first."
+      const message = t("reservationForm.selectPatientFirst")
       setInlineError(message)
       toast.error(message)
       return
@@ -257,7 +260,7 @@ export function PatientFormDialog({
 
     if (patientMode === "new") {
       if (!isValidForCountry(phoneCountry, phoneLocal)) {
-        toast.error("Phone number is not valid for selected country.")
+        toast.error(t("patients.phoneInvalid"))
         return
       }
       const patientValues = await patientForm.trigger()
@@ -268,7 +271,7 @@ export function PatientFormDialog({
 
     if (values.bookingType === "advance") {
       if (!selectedSlotId) {
-        const message = "Choose a time slot (same list patients see when booking online)."
+        const message = t("reservationForm.chooseSlot")
         setSlotError(message)
         toast.error(message)
         return
@@ -280,7 +283,7 @@ export function PatientFormDialog({
           type: "manual",
           message: "Visit date is required for walk-in and emergency",
         })
-        toast.error("Choose a visit date")
+        toast.error(t("reservationForm.visitDateRequired"))
         return
       }
     }
@@ -313,7 +316,7 @@ export function PatientFormDialog({
         })
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to save reservation"
+      const message = error instanceof Error ? error.message : t("reservationForm.saveFailed")
       setInlineError(message)
       toast.error(message)
       return
@@ -340,20 +343,17 @@ export function PatientFormDialog({
   return (
     <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger asChild>
-        <Button disabled={isProcessing}>Add reservation</Button>
+        <Button disabled={isProcessing}>{t("reservationForm.addReservation")}</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New reservation</DialogTitle>
-          <DialogDescription>
-            Advance bookings use the same published slots as <strong>/book</strong>. Walk-in and
-            emergency skip the slot and go to the waiting queue.
-          </DialogDescription>
+          <DialogTitle>{t("reservationForm.title")}</DialogTitle>
+          <DialogDescription>{t("reservationForm.description")}</DialogDescription>
         </DialogHeader>
 
         <form className="space-y-4" onSubmit={reservationForm.handleSubmit(submit)}>
           <div className="rounded-lg border p-3">
-            <p className="mb-2 text-sm font-medium">Patient</p>
+            <p className="mb-2 text-sm font-medium">{t("reservationForm.patient")}</p>
             <div className="flex gap-2">
               <Button
                 className="flex-1"
@@ -362,7 +362,7 @@ export function PatientFormDialog({
                 variant={patientMode === "existing" ? "default" : "outline"}
                 disabled={isProcessing}
               >
-                Existing
+                {t("reservationForm.existing")}
               </Button>
               <Button
                 className="flex-1"
@@ -371,18 +371,18 @@ export function PatientFormDialog({
                 variant={patientMode === "new" ? "default" : "outline"}
                 disabled={isProcessing}
               >
-                New profile
+                {t("reservationForm.newProfile")}
               </Button>
             </div>
           </div>
 
           {patientMode === "existing" && (
             <div className="space-y-2 rounded-lg border p-3">
-              <Label htmlFor="patientSearch">Search patient</Label>
+              <Label htmlFor="patientSearch">{t("reservationForm.searchPatient")}</Label>
               <Input
                 id="patientSearch"
                 onChange={(event) => setPatientSearch(event.target.value)}
-                placeholder="Name or phone"
+                placeholder={t("reservations.searchPlaceholder")}
                 value={patientSearch}
                 disabled={isProcessing}
               />
@@ -393,11 +393,13 @@ export function PatientFormDialog({
               >
                 <SelectTrigger className="w-full">
                   <SelectValue
-                    placeholder={patientsLoading ? "Loading…" : "Select a patient"}
+                    placeholder={
+                      patientsLoading ? t("common:actions.loading") : t("reservationForm.selectPatient")
+                    }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Select a patient</SelectItem>
+                  <SelectItem value="none">{t("reservationForm.selectPatient")}</SelectItem>
                   {filteredPatients.map((patient) => (
                     <SelectItem key={patient.id} value={patient.id}>
                       {patient.name} — {patient.phone}
@@ -411,10 +413,10 @@ export function PatientFormDialog({
           {patientMode === "new" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">{t("patients.name")}</Label>
                 <Input
                   id="name"
-                  placeholder="Full name"
+                  placeholder={t("reservationForm.fullName")}
                   {...patientForm.register("name")}
                   disabled={isProcessing}
                 />
@@ -424,7 +426,7 @@ export function PatientFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">{t("patients.phone")}</Label>
                 <PhoneCountryField
                   country={phoneCountry}
                   localNumber={phoneLocal}
@@ -440,7 +442,7 @@ export function PatientFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="age">Age</Label>
+                <Label htmlFor="age">{t("patients.age")}</Label>
                 <Input
                   id="age"
                   min={0}
@@ -455,7 +457,7 @@ export function PatientFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bloodType">Blood type</Label>
+                <Label htmlFor="bloodType">{t("patients.bloodType")}</Label>
                 <Controller
                   control={patientForm.control}
                   name="bloodType"
@@ -466,7 +468,7 @@ export function PatientFormDialog({
                       onValueChange={field.onChange}
                     >
                       <SelectTrigger className="w-full" id="bloodType">
-                        <SelectValue placeholder="Blood type" />
+                        <SelectValue placeholder={t("patients.bloodType")} />
                       </SelectTrigger>
                       <SelectContent>
                         {BLOOD_TYPES.map((bloodType) => (
@@ -484,7 +486,7 @@ export function PatientFormDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="new-profile-xray">X-ray Image (optional)</Label>
+                <Label htmlFor="new-profile-xray">{t("patients.xrayOptional")}</Label>
                 <input
                   id="new-profile-xray"
                   type="file"
@@ -498,7 +500,7 @@ export function PatientFormDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="bookingType">Booking type</Label>
+            <Label htmlFor="bookingType">{t("reservations.bookingType")}</Label>
             <Controller
               control={reservationForm.control}
               name="bookingType"
@@ -509,7 +511,7 @@ export function PatientFormDialog({
                   onValueChange={(v) => field.onChange(v as BookingType)}
                 >
                   <SelectTrigger className="w-full" id="bookingType">
-                    <SelectValue placeholder="Booking type" />
+                    <SelectValue placeholder={t("bookingTypes.placeholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {BOOKING_TYPES.map((bt) => (
@@ -528,7 +530,7 @@ export function PatientFormDialog({
 
           {bookingType === "advance" ? (
             <div className="space-y-2 rounded-lg border border-teal-200/60 bg-teal-50/40 p-3 dark:border-teal-900/40 dark:bg-teal-950/20">
-              <Label className="text-slate-900 dark:text-white">Time slot</Label>
+              <Label className="text-slate-900 dark:text-white">{t("reservationForm.timeSlot")}</Label>
               <AdminSlotPicker
                 disabled={isProcessing}
                 loading={slotsLoading}
@@ -543,11 +545,8 @@ export function PatientFormDialog({
             </div>
           ) : (
             <div className="space-y-2">
-              <Label htmlFor="appointmentDate">Visit date</Label>
-              <p className="text-muted-foreground text-xs">
-                Used on the dashboard for sorting; the patient is placed in <strong>Waiting</strong>,
-                not tied to a bookable slot.
-              </p>
+              <Label htmlFor="appointmentDate">{t("reservationForm.visitDate")}</Label>
+              <p className="text-muted-foreground text-xs">{t("reservationForm.visitDateHint")}</p>
               <Input
                 id="appointmentDate"
                 type="date"
@@ -566,9 +565,9 @@ export function PatientFormDialog({
             className="w-full"
             type="submit"
             loading={isProcessing}
-            loadingText="Saving…"
+            loadingText={t("common:actions.loading")}
           >
-            Save reservation
+            {t("reservationForm.saveReservation")}
           </LoadingButton>
         </form>
       </DialogContent>

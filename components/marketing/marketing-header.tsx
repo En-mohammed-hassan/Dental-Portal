@@ -3,21 +3,14 @@
 import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
+import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { useSiteContent } from "@/components/marketing/site-content-context"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-
-const links = [
-  { href: "/services", label: "Services" },
-  { href: "/blog", label: "Blog" },
-  { href: "/gallery", label: "Gallery" },
-  { href: "/book", label: "Book" },
-]
-
-const patientLink = { href: "/patient", label: "My visits" }
 
 type Me = {
   user: {
@@ -28,12 +21,28 @@ type Me = {
 }
 
 export function MarketingHeader() {
+  const { t } = useTranslation("common")
   const site = useSiteContent()
   const pathname = usePathname()
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [me, setMe] = useState<Me["user"]>(null)
   const [signingOut, setSigningOut] = useState(false)
+
+  const links = useMemo(
+    () => [
+      { href: "/services", label: t("nav.services") },
+      { href: "/blog", label: t("nav.blog") },
+      { href: "/gallery", label: t("nav.gallery") },
+      { href: "/book", label: t("nav.book") },
+    ],
+    [t]
+  )
+
+  const patientLink = useMemo(
+    () => ({ href: "/patient", label: t("nav.myVisits") }),
+    [t]
+  )
 
   useEffect(() => {
     setOpen(false)
@@ -103,6 +112,7 @@ export function MarketingHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <LanguageSwitcher className="hidden sm:inline-flex" />
           {isPatient ? (
             <Button
               type="button"
@@ -115,26 +125,26 @@ export function MarketingHeader() {
               {signingOut ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Signing out…
+                  {t("actions.loading")}
                 </>
               ) : (
-                "Sign out"
+                t("nav.signOut")
               )}
             </Button>
           ) : isStaff ? (
             <Button asChild size="sm" variant="outline" className="hidden rounded-full sm:inline-flex">
-              <Link href="/admin/reservations">Dashboard</Link>
+              <Link href="/admin/reservations">{t("nav.dashboard")}</Link>
             </Button>
           ) : (
             <Button asChild size="sm" variant="outline" className="hidden rounded-full sm:inline-flex">
-              <Link href="/sign-in">Sign in</Link>
+              <Link href="/sign-in">{t("nav.signIn")}</Link>
             </Button>
           )}
           <ThemeToggle />
           <button
             type="button"
             className="rounded-md p-2 md:hidden"
-            aria-label="Menu"
+            aria-label={t("nav.toggleMenu")}
             onClick={() => setOpen((v) => !v)}
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -150,6 +160,9 @@ export function MarketingHeader() {
 
       {open && (
         <div className="border-t border-slate-200 px-4 py-3 md:hidden dark:border-slate-800">
+          <div className="mb-3">
+            <LanguageSwitcher />
+          </div>
           <div className="flex flex-col gap-2">
             {navLinks.map((l) => (
               <Link
@@ -173,15 +186,15 @@ export function MarketingHeader() {
                 onClick={() => void signOutPatient()}
               >
                 {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {signingOut ? "Signing out…" : "Sign out"}
+                {signingOut ? t("actions.loading") : t("nav.signOut")}
               </button>
             ) : isStaff ? (
               <Link href="/admin/reservations" className="rounded-lg px-3 py-2 text-sm font-medium">
-                Dashboard
+                {t("nav.dashboard")}
               </Link>
             ) : (
               <Link href="/sign-in" className="rounded-lg px-3 py-2 text-sm font-medium">
-                Sign in
+                {t("nav.signIn")}
               </Link>
             )}
           </div>

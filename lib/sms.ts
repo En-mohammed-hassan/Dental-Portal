@@ -1,3 +1,5 @@
+import type { Locale } from "@/lib/locale"
+
 /**
  * SMS delivery providers:
  * - mock (default): free, no real SMS, logs message and returns success.
@@ -65,6 +67,13 @@ export async function sendSms(toPhone: string, body: string): Promise<{ ok: bool
   }
 }
 
-export function treatmentDoneMessage(patientName: string, clinicName: string): string {
+export function treatmentDoneMessage(
+  patientName: string,
+  clinicName: string,
+  locale: Locale = "en"
+): string {
+  if (locale === "ar") {
+    return `مرحباً ${patientName}، اكتملت زيارتك في ${clinicName}. شكراً لثقتكم بنا.`
+  }
   return `Hi ${patientName}, your visit at ${clinicName} is complete. Thank you for trusting us with your smile.`
 }

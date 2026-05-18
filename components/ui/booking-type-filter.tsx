@@ -1,5 +1,7 @@
 "use client"
 
+import { useTranslation } from "react-i18next"
+
 import {
   Select,
   SelectContent,
@@ -7,9 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useBookingTypeLabels } from "@/lib/i18n/use-admin-labels"
 import { cn } from "@/lib/utils"
 import { type BookingType } from "@/types/patient"
-import { bookingTypeLabels } from "@/utils/patient"
 
 type Value = BookingType | "all"
 
@@ -28,6 +30,9 @@ export function BookingTypeFilterSelect({
   className,
   id,
 }: BookingTypeFilterSelectProps) {
+  const { t } = useTranslation("admin")
+  const bookingTypeLabels = useBookingTypeLabels()
+
   return (
     <Select
       disabled={disabled}
@@ -35,10 +40,10 @@ export function BookingTypeFilterSelect({
       onValueChange={(v) => onChange(v as Value)}
     >
       <SelectTrigger className={cn("w-full", className)} id={id}>
-        <SelectValue placeholder="Booking type" />
+        <SelectValue placeholder={t("bookingTypes.placeholder")} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">All booking types</SelectItem>
+        <SelectItem value="all">{t("bookingTypes.all")}</SelectItem>
         <SelectItem value="advance">{bookingTypeLabels.advance}</SelectItem>
         <SelectItem value="walk-in">{bookingTypeLabels["walk-in"]}</SelectItem>
         <SelectItem value="emergency">{bookingTypeLabels.emergency}</SelectItem>

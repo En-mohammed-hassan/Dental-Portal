@@ -9,9 +9,11 @@ import {
   startOfDay,
   startOfMonth,
 } from "date-fns"
+import { ar, enUS } from "date-fns/locale"
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, Users } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { Matcher } from "react-day-picker"
+import { useTranslation } from "react-i18next"
 
 import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
@@ -49,6 +51,11 @@ export function BookingCalendar({
   onBook,
   authBanner,
 }: Props) {
+  const { t, i18n } = useTranslation("marketing")
+  const isRtl = i18n.dir() === "rtl"
+  const dateLocale = i18n.language === "ar" ? ar : enUS
+  const PrevIcon = isRtl ? ChevronRight : ChevronLeft
+  const NextIcon = isRtl ? ChevronLeft : ChevronRight
   const today = useMemo(() => startOfDay(new Date()), [])
 
   const slotsByDay = useMemo(() => {
@@ -142,12 +149,12 @@ export function BookingCalendar({
         {/* Calendar column */}
         <Card className="overflow-hidden border-2 border-slate-200/90 bg-white/95 shadow-lg dark:border-slate-800 dark:bg-slate-950/80">
           <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-teal-50/90 to-sky-50/50 pb-4 dark:border-slate-800 dark:from-teal-950/40 dark:to-slate-900/80">
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-              <div>
-                <CardTitle className="text-lg">Pick a date</CardTitle>
+            <div className="flex items-center gap-2 text-start">
+              <CalendarDays className="h-5 w-5 shrink-0 text-teal-600 dark:text-teal-400" />
+              <div className="min-w-0">
+                <CardTitle className="text-lg">{t("calendar.pickDate")}</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">
-                  Teal = seats left; amber = that day is booked up. Pick a day, then choose a time.
+                  {t("calendar.pickDateHint")}
                 </CardDescription>
               </div>
             </div>
@@ -156,7 +163,7 @@ export function BookingCalendar({
             {loading ? (
               <div className="flex min-h-[320px] items-center justify-center gap-2 text-slate-500">
                 <Loader2 className="h-6 w-6 animate-spin" />
-                <span>Loading calendar…</span>
+                <span>{t("calendar.loading")}</span>
               </div>
             ) : (
               <div className="flex flex-col items-center">
@@ -168,12 +175,12 @@ export function BookingCalendar({
                     className="h-10 w-10 shrink-0 rounded-xl"
                     onClick={goPrevMonth}
                     disabled={isBefore(addMonths(month, -1), startOfMonth(today))}
-                    aria-label="Previous month"
+                    aria-label={t("calendar.prevMonth")}
                   >
-                    <ChevronLeft className="h-5 w-5" />
+                    <PrevIcon className="h-5 w-5" />
                   </Button>
                   <p className="text-base font-semibold tracking-tight text-slate-900 dark:text-white sm:text-lg">
-                    {format(month, "MMMM yyyy")}
+                    {format(month, "MMMM yyyy", { locale: dateLocale })}
                   </p>
                   <Button
                     type="button"
@@ -182,9 +189,9 @@ export function BookingCalendar({
                     className="h-10 w-10 shrink-0 rounded-xl"
                     onClick={goNextMonth}
                     disabled={!isBefore(month, lastBookableMonth)}
-                    aria-label="Next month"
+                    aria-label={t("calendar.nextMonth")}
                   >
-                    <ChevronRight className="h-5 w-5" />
+                    <NextIcon className="h-5 w-5" />
                   </Button>
                 </div>
 
@@ -201,6 +208,7 @@ export function BookingCalendar({
                     selected={selected}
                     onSelect={setSelected}
                     disabled={disabledDays}
+                    locale={dateLocale}
                     showOutsideDays
                     className="w-full rounded-xl [--cell-size:2.75rem] sm:[--cell-size:3.25rem]"
                     classNames={{
@@ -225,11 +233,11 @@ export function BookingCalendar({
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" aria-hidden />
-                    Open slots
+                    {t("calendar.openSlots")}
                   </span>
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-flex h-2 w-2 rounded-full bg-amber-400" aria-hidden />
-                    Full (no seats)
+                    {t("calendar.fullNoSeats")}
                   </span>
                 </div>
               </div>
@@ -239,49 +247,29 @@ export function BookingCalendar({
 
         {/* Times column */}
         <div className="min-h-[280px] space-y-4">
-          <div className="flex items-center gap-2 text-slate-900 dark:text-white">
-            <Clock className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+          <div className="flex items-center gap-2 text-start text-slate-900 dark:text-white">
+            <Clock className="h-5 w-5 shrink-0 text-teal-600 dark:text-teal-400" />
             <h2 className="text-xl font-semibold tracking-tight">
               {selected
-                ? format(selected, "EEEE, MMMM d")
-                : "Choose a date"}
+                ? format(selected, "EEEE, MMMM d", { locale: dateLocale })
+                : t("calendar.chooseDate")}
             </h2>
           </div>
 
           {!loading && slots.length === 0 && (
             <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-900/40">
               <p className="text-base font-medium text-slate-700 dark:text-slate-300">
-                No open appointments yet
+                {t("calendar.noAppointments")}
               </p>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                In <span className="font-medium text-slate-700 dark:text-slate-300">Admin → Website &amp; slots</span>, each row must show{" "}
-                <span className="font-medium">Live on /book</span>: turn <strong>Active</strong> on and
-                set the <strong>end</strong> time after the current time. If the list says{" "}
-                <span className="font-medium">Ended</span> or <span className="font-medium">Off</span>, patients
-                won&apos;t see that slot.
-              </p>
-              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                <a
-                  href="/api/public/slots?diagnose=1"
-                  className="font-medium text-teal-700 underline underline-offset-2 dark:text-teal-400"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open /api/public/slots?diagnose=1
-                </a>{" "}
-                (dev only) — check <code className="rounded bg-slate-200/80 px-1 dark:bg-slate-800">_diagnose</code>{" "}
-                for row counts and whether <strong>endsAt</strong> is after server time. In DevTools → Network, use
-                filter <strong>All</strong> or <strong>Fetch/XHR</strong> (not only Doc); the <code>/book</code> page
-                loads slots as fetch, not as a full page navigation.
+                {t("calendar.noAppointmentsHint")}
               </p>
             </div>
           )}
 
           {!loading && slots.length > 0 && selected && slotsForSelectedDay.length === 0 && (
             <div className="rounded-3xl border border-slate-200 bg-white/80 px-6 py-10 text-center dark:border-slate-800 dark:bg-slate-900/50">
-              <p className="text-slate-600 dark:text-slate-400">
-                No times on this day. Pick another date highlighted on the calendar.
-              </p>
+              <p className="text-slate-600 dark:text-slate-400">{t("calendar.noTimesOnDay")}</p>
             </div>
           )}
 
@@ -310,12 +298,14 @@ export function BookingCalendar({
                             {format(start, "HH:mm")}
                           </p>
                           <p className="mt-1 text-lg font-medium text-slate-600 dark:text-slate-400">
-                            to {format(end, "HH:mm")}
+                            {t("calendar.timeTo")} {format(end, "HH:mm")}
                           </p>
                         </div>
-                        <div className="rounded-xl bg-white/80 px-3 py-2 text-right text-xs font-medium text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-300">
+                        <div className="rounded-xl bg-white/80 px-3 py-2 text-end text-xs font-medium text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-300">
                           <Users className="mx-auto mb-1 h-4 w-4 opacity-70" />
-                          {full ? "Full" : `${s.remaining} left`}
+                          {full
+                            ? t("calendar.full")
+                            : t("calendar.seatsLeft", { count: s.remaining })}
                         </div>
                       </div>
                       {s.label ? (
@@ -332,23 +322,23 @@ export function BookingCalendar({
                       onClick={() => onBook(s.id)}
                       title={
                         full
-                          ? "This slot is full"
+                          ? t("calendar.slotFull")
                           : isStaff
-                            ? "Staff book from the dashboard"
+                            ? t("calendar.staffBookFromDashboard")
                             : !isPatient
-                              ? "Sign in as a patient first"
+                              ? t("calendar.signInPatientFirst")
                               : undefined
                       }
                     >
                       {busy ? (
                         <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                          Booking…
+                          <Loader2 className="me-2 h-5 w-5 animate-spin" />
+                          {t("calendar.booking")}
                         </>
                       ) : full ? (
-                        "Fully booked"
+                        t("calendar.fullyBooked")
                       ) : (
-                        "Reserve this time"
+                        t("calendar.reserveTime")
                       )}
                     </Button>
                   </div>
@@ -360,9 +350,9 @@ export function BookingCalendar({
           {!isPatient && !isStaff && slots.length > 0 && (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               <Link className="font-medium text-teal-700 underline dark:text-teal-400" href="/sign-in?mode=patient">
-                Sign in as a patient
+                {t("book.patientSignIn")}
               </Link>{" "}
-              to reserve.
+              {t("calendar.signInToReserve")}
             </p>
           )}
         </div>

@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic"
 const postSchema = z.object({
   imageBase64: requiredStoredImageSchema,
   caption: z.string().nullable().optional(),
+  captionAr: z.string().nullable().optional(),
   sortOrder: z.coerce.number().int().optional(),
 })
 
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
       data: {
         imageBase64: parsed.data.imageBase64,
         caption: parsed.data.caption ?? null,
+        captionAr: parsed.data.captionAr ?? null,
         sortOrder: parsed.data.sortOrder ?? 0,
       },
     })

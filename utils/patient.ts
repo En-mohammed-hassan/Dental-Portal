@@ -1,3 +1,5 @@
+import { formatDate } from "@/lib/format"
+import { type Locale } from "@/lib/locale"
 import { type BookingType, type Patient } from "@/types/patient"
 
 export const bookingTypeLabels: Record<BookingType, string> = {
@@ -12,12 +14,8 @@ export const bookingTypeBadgeClass: Record<BookingType, string> = {
   emergency: "bg-red-600 text-white border-transparent",
 }
 
-export function formatAppointmentDate(date: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(date))
+export function formatAppointmentDate(date: string, locale: Locale = "en"): string {
+  return formatDate(date, locale)
 }
 
 export function sortByAppointmentDate(patients: Patient[]): Patient[] {

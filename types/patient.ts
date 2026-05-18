@@ -31,8 +31,17 @@ export interface Patient {
   completedAt?: string | null
   treatmentNote?: string | null
   xrayImageBase64?: string | null
-  /** Stored in cents (integer) */
+  /** Stored in cents (integer) — legacy; prefer chargeCents */
   feeCents?: number | null
+  chargeCents?: number | null
+  paymentCents?: number | null
+  balanceAfterCents?: number | null
+  /** Current amount patient owes (from profile) */
+  balanceDueCents?: number | null
+  /** Lifetime treatment charges (ledger) */
+  totalChargedCents?: number | null
+  /** Lifetime payments received (ledger) */
+  totalPaidCents?: number | null
   paymentStatus?: PaymentStatusLabel | null
   canalsCount?: number | null
   /** FDI permanent tooth codes, e.g. "16", "21" */
@@ -44,6 +53,11 @@ export interface Patient {
 export interface FinishTreatmentInput {
   treatmentNote: string
   xrayImageBase64?: string | null
+  /** Treatment charge added to balance (major units input converted to cents in UI) */
+  chargeCents?: number | null
+  /** Payment received this session (reduces balance) */
+  paymentCents?: number | null
+  /** @deprecated use chargeCents */
   feeCents?: number | null
   paymentStatus?: PaymentStatusLabel | null
   canalsCount?: number | null
@@ -79,6 +93,9 @@ export interface PatientProfile {
   age: number
   bloodType: BloodType
   xrayImageBase64?: string | null
+  balanceDueCents?: number
+  totalChargedCents?: number
+  totalPaidCents?: number
   createdAt: string
   linkedReservations?: Array<{
     id: string

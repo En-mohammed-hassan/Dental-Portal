@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { type CountryCode } from "libphonenumber-js"
 import toast from "react-hot-toast"
+import { useTranslation } from "react-i18next"
 
 import { PhoneCountryField } from "@/components/ui/phone-country-field"
 import { LoadingButton } from "@/components/ui/loading-button"
@@ -24,6 +25,7 @@ import { BLOOD_TYPES } from "@/types/patient"
 const MAX_XRAY_SIZE_BYTES = 2 * 1024 * 1024
 
 export default function PatientRegisterPage() {
+  const { t } = useTranslation("patient")
   const router = useRouter()
   const [name, setName] = useState("")
   const [phoneCountry, setPhoneCountry] = useState<CountryCode>("SY")
@@ -38,7 +40,7 @@ export default function PatientRegisterPage() {
     setLoading(true)
     try {
       if (!isValidForCountry(phoneCountry, phoneLocal)) {
-        throw new Error("Phone number is not valid for selected country.")
+        throw new Error(t("phoneInvalid"))
       }
       const phone = buildE164FromCountryAndLocal(phoneCountry, phoneLocal)
       const res = await fetch("/api/patient/register", {
@@ -54,12 +56,12 @@ export default function PatientRegisterPage() {
       })
       const data = (await res.json().catch(() => ({}))) as { message?: string }
       if (!res.ok) {
-        throw new Error(data.message ?? "Registration failed")
+        throw new Error(data.message ?? t("registerFailed"))
       }
-      toast.success("Profile created — sign in with your phone")
+      toast.success(t("registerSuccess"))
       router.push("/sign-in?mode=patient")
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      toast.error(err instanceof Error ? err.message : t("failed"))
     } finally {
       setLoading(false)
     }
@@ -69,11 +71,11 @@ export default function PatientRegisterPage() {
     const file = event.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith("image/")) {
-      toast.error("Please choose a valid image file")
+      toast.error(t("imageInvalid"))
       return
     }
     if (file.size > MAX_XRAY_SIZE_BYTES) {
-      toast.error("X-ray image must be 2MB or smaller")
+      toast.error(t("xrayTooLarge"))
       return
     }
     const reader = new FileReader()
@@ -88,20 +90,17 @@ export default function PatientRegisterPage() {
   return (
     <Card className="border-slate-200/80 bg-white/90 shadow-lg dark:border-slate-800 dark:bg-slate-900/90">
       <CardHeader>
-        <CardTitle>Create your profile</CardTitle>
-        <CardDescription>
-          Use the same details the clinic would put on file. You&apos;ll verify with a code sent to
-          your phone.
-        </CardDescription>
+        <CardTitle>{t("registerCardTitle")}</CardTitle>
+        <CardDescription>{t("registerCardDesc")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={(e) => void submit(e)}>
           <div className="space-y-2">
-            <Label htmlFor="name">Full name</Label>
+            <Label htmlFor="name">{t("nameLabel")}</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
+            <Label htmlFor="phone">{t("phoneLabel")}</Label>
             <PhoneCountryField
               country={phoneCountry}
               localNumber={phoneLocal}
@@ -113,7 +112,7 @@ export default function PatientRegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="age">Age</Label>
+            <Label htmlFor="age">{t("ageLabel")}</Label>
             <Input
               id="age"
               type="number"
@@ -124,7 +123,7 @@ export default function PatientRegisterPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Blood type</Label>
+            <Label>{t("bloodTypeLabel")}</Label>
             <Select value={bloodType} onValueChange={setBloodType}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -139,26 +138,34 @@ export default function PatientRegisterPage() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="xrayImageBase64">X-ray image (optional)</Label>
+            <Label htmlFor="xrayImageBase64">{t("xrayLabel")}</Label>
             <input
               id="xrayImageBase64"
               type="file"
               accept="image/*"
-              className="text-sm file:mr-3 file:rounded-md file:border file:px-3 file:py-1.5"
+              className="text-sm file:me-3 file:rounded-md file:border file:px-3 file:py-1.5"
               onChange={(e) => void handleXrayUpload(e)}
             />
             {xrayImageBase64 ? (
-              <p className="text-muted-foreground text-xs">Image attached successfully.</p>
+              <p className="text-muted-foreground text-xs">{t("xrayAttached")}</p>
             ) : null}
           </div>
-          <LoadingButton className="w-full" loading={loading} loadingText="Saving…" type="submit">
-            Continue
+          <LoadingButton
+            className="w-full"
+            loading={loading}
+            loadingText={t("saving")}
+            type="submit"
+          >
+            {t("continue")}
           </LoadingButton>
         </form>
         <p className="mt-6 text-center text-xs text-slate-500">
-          Already registered?{" "}
-          <Link className="font-medium text-teal-700 underline dark:text-teal-400" href="/sign-in?mode=patient">
-            Sign in
+          {t("alreadyRegistered")}{" "}
+          <Link
+            className="font-medium text-teal-700 underline dark:text-teal-400"
+            href="/sign-in?mode=patient"
+          >
+            {t("signIn")}
           </Link>
         </p>
       </CardContent>

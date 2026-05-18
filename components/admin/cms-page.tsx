@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import toast from "react-hot-toast"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
@@ -18,12 +19,16 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { CmsLocaleTabs } from "@/components/admin/cms-locale-tabs"
+import { cmsContentDir, useUiDirection } from "@/lib/i18n/use-ui-direction"
+import { normalizeMarketingContent } from "@/lib/marketing-content"
+import type { Locale } from "@/lib/locale"
 import {
-  marketingContentSchema,
   type MarketingContentInput,
+  type MarketingContentLocales,
 } from "@/types/public-site"
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
+async function api<T>(url: string, init?: RequestInit, fallbackError?: string): Promise<T> {
   const hasBody = Boolean(init?.body)
   const res = await fetch(url, {
     ...init,
@@ -37,7 +42,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const d = data as { message?: string; issues?: string[] }
     const msg =
-      d.message || (d.issues?.length ? d.issues.join("; ") : null) || "Request failed"
+      d.message || (d.issues?.length ? d.issues.join("; ") : null) || fallbackError || "Request failed"
     throw new Error(msg)
   }
   return data as T
@@ -45,46 +50,106 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 const MAX_CMS_IMAGE_BYTES = 3 * 1024 * 1024
 
-function readImageDataUrl(file: File): Promise<string> {
+type ImageMessages = {
+  chooseFile: string
+  tooLarge: string
+  readFailed: string
+}
+
+function readImageDataUrl(file: File, messages: ImageMessages): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
-      reject(new Error("Please choose an image file"))
+      reject(new Error(messages.chooseFile))
       return
     }
     if (file.size > MAX_CMS_IMAGE_BYTES) {
-      reject(new Error("Image must be 3MB or smaller"))
+      reject(new Error(messages.tooLarge))
       return
     }
     const reader = new FileReader()
     reader.onload = () => {
       const r = reader.result
       if (typeof r !== "string") {
-        reject(new Error("Failed to read image"))
+        reject(new Error(messages.readFailed))
       } else {
         resolve(r)
       }
     }
-    reader.onerror = () => reject(new Error("Failed to read image"))
+    reader.onerror = () => reject(new Error(messages.readFailed))
     reader.readAsDataURL(file)
   })
 }
 
+function emptyMarketingLocale(): MarketingContentInput {
+  return {
+    home: {
+      features: [
+        { title: "", description: "" },
+        { title: "", description: "" },
+        { title: "", description: "" },
+      ],
+    },
+  }
+}
+
+function normalizeFeatures(mc: MarketingContentInput): MarketingContentInput {
+  const f = mc.home?.features ?? []
+  return {
+    ...mc,
+    home: {
+      ...mc.home,
+      features: [
+        f[0] ?? { title: "", description: "" },
+        f[1] ?? { title: "", description: "" },
+        f[2] ?? { title: "", description: "" },
+      ],
+    },
+  }
+}
+
 export function CmsPage() {
+  const { t } = useTranslation("admin")
+  const { dir: uiDir } = useUiDirection()
+  const imageMessages: ImageMessages = {
+    chooseFile: t("cms.imageChooseFile"),
+    tooLarge: t("cms.imageTooLarge"),
+    readFailed: t("cms.imageReadFailed"),
+  }
   const [savingSite, setSavingSite] = useState(false)
+  const [copyLocale, setCopyLocale] = useState<Locale>("en")
   const [site, setSite] = useState({
     clinicName: "",
+    clinicNameAr: "",
     heroTitle: "",
+    heroTitleAr: "",
     heroSubtitle: "",
+    heroSubtitleAr: "",
     heroImageBase64: "",
     aboutMarkdown: "",
+    aboutMarkdownAr: "",
     contactPhone: "",
     contactEmail: "",
     facebookUrl: "",
     instagramUrl: "",
     address: "",
+    addressAr: "",
     footerNote: "",
+    footerNoteAr: "",
   })
-  const [marketing, setMarketing] = useState<MarketingContentInput>({})
+  const [marketing, setMarketing] = useState<MarketingContentLocales>({
+    en: emptyMarketingLocale(),
+    ar: emptyMarketingLocale(),
+  })
+
+  const marketingLocale = marketing[copyLocale] ?? emptyMarketingLocale()
+  const setMarketingLocale = (
+    updater: (prev: MarketingContentInput) => MarketingContentInput
+  ) => {
+    setMarketing((prev) => ({
+      ...prev,
+      [copyLocale]: normalizeFeatures(updater(prev[copyLocale] ?? emptyMarketingLocale())),
+    }))
+  }
 
   const loadSite = useCallback(async () => {
     const d = await api<{
@@ -92,36 +157,33 @@ export function CmsPage() {
     }>("/api/admin/site-settings")
     setSite({
       clinicName: d.site.clinicName,
+      clinicNameAr: d.site.clinicNameAr ?? "",
       heroTitle: d.site.heroTitle,
+      heroTitleAr: d.site.heroTitleAr ?? "",
       heroSubtitle: d.site.heroSubtitle,
+      heroSubtitleAr: d.site.heroSubtitleAr ?? "",
       heroImageBase64: d.site.heroImageBase64 ?? "",
       aboutMarkdown: d.site.aboutMarkdown ?? "",
+      aboutMarkdownAr: d.site.aboutMarkdownAr ?? "",
       contactPhone: d.site.contactPhone ?? "",
       contactEmail: d.site.contactEmail ?? "",
       facebookUrl: d.site.facebookUrl ?? "",
       instagramUrl: d.site.instagramUrl ?? "",
       address: d.site.address ?? "",
+      addressAr: d.site.addressAr ?? "",
       footerNote: d.site.footerNote ?? "",
+      footerNoteAr: d.site.footerNoteAr ?? "",
     })
-    const mcParsed = marketingContentSchema.safeParse(d.site.marketingContent ?? {})
-    const mc = mcParsed.success ? mcParsed.data : {}
-    const f = mc.home?.features ?? []
+    const normalized = normalizeMarketingContent(d.site.marketingContent)
     setMarketing({
-      ...mc,
-      home: {
-        ...mc.home,
-        features: [
-          f[0] ?? { title: "", description: "" },
-          f[1] ?? { title: "", description: "" },
-          f[2] ?? { title: "", description: "" },
-        ],
-      },
+      en: normalizeFeatures(normalized.en ?? {}),
+      ar: normalizeFeatures(normalized.ar ?? {}),
     })
   }, [])
 
   useEffect(() => {
-    void loadSite().catch(() => toast.error("Could not load site settings"))
-  }, [loadSite])
+    void loadSite().catch(() => toast.error(t("cms.loadSiteFailed")))
+  }, [loadSite, t])
 
   async function saveSite() {
     setSavingSite(true)
@@ -130,6 +192,12 @@ export function CmsPage() {
         method: "PUT",
         body: JSON.stringify({
           ...site,
+          clinicNameAr: site.clinicNameAr || null,
+          heroTitleAr: site.heroTitleAr || null,
+          heroSubtitleAr: site.heroSubtitleAr || null,
+          aboutMarkdownAr: site.aboutMarkdownAr || null,
+          addressAr: site.addressAr || null,
+          footerNoteAr: site.footerNoteAr || null,
           heroImageBase64: site.heroImageBase64 || null,
           aboutMarkdown: site.aboutMarkdown || null,
           contactPhone: site.contactPhone || null,
@@ -141,66 +209,97 @@ export function CmsPage() {
           marketingContent: marketing,
         }),
       })
-      toast.success("Site saved")
+      toast.success(t("cms.saved"))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed")
+      toast.error(e instanceof Error ? e.message : t("cms.saveFailed"))
     } finally {
       setSavingSite(false)
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div dir={uiDir} className="cms-site-form space-y-6 text-start">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-          Website & booking slots
+          {t("cms.title")}
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Control public copy, services, blog, gallery, and patient-facing time slots.
-        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{t("cms.subtitle")}</p>
       </div>
 
       <Tabs defaultValue="site" className="w-full">
-        <TabsList className="flex flex-wrap gap-1">
-          <TabsTrigger value="site">Site copy</TabsTrigger>
-          <TabsTrigger value="slots">Slots</TabsTrigger>
-          <TabsTrigger value="services">Services</TabsTrigger>
-          <TabsTrigger value="blog">Blog</TabsTrigger>
-          <TabsTrigger value="gallery">Gallery</TabsTrigger>
+        <TabsList className="flex h-auto w-full min-w-0 flex-wrap justify-start gap-1 overflow-x-auto">
+          <TabsTrigger value="site">{t("cms.tabs.site")}</TabsTrigger>
+          <TabsTrigger value="slots">{t("cms.tabs.slots")}</TabsTrigger>
+          <TabsTrigger value="services">{t("cms.tabs.services")}</TabsTrigger>
+          <TabsTrigger value="blog">{t("cms.tabs.blog")}</TabsTrigger>
+          <TabsTrigger value="gallery">{t("cms.tabs.gallery")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="site" className="space-y-4 pt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Homepage & contact</CardTitle>
-              <CardDescription>Shown on the public marketing site.</CardDescription>
+            <CardHeader className="text-start">
+              <CardTitle>{t("cms.site.homepageTitle")}</CardTitle>
+              <CardDescription>{t("cms.site.homepageDesc")}</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
+            <CardContent className="cms-bilingual-form grid gap-4 text-start sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label>Clinic name</Label>
+                <Label>{t("cms.site.clinicNameEn")}</Label>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.clinicName}
                   onChange={(e) => setSite((s) => ({ ...s, clinicName: e.target.value }))}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Hero title</Label>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t("cms.site.clinicNameAr")}</Label>
                 <Input
+                  dir="rtl"
+                  className="cms-field-ar"
+                  value={site.clinicNameAr}
+                  onChange={(e) => setSite((s) => ({ ...s, clinicNameAr: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("cms.site.heroTitleEn")}</Label>
+                <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.heroTitle}
                   onChange={(e) => setSite((s) => ({ ...s, heroTitle: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Hero subtitle</Label>
+                <Label>{t("cms.site.heroTitleAr")}</Label>
                 <Input
+                  dir="rtl"
+                  className="cms-field-ar"
+                  value={site.heroTitleAr}
+                  onChange={(e) => setSite((s) => ({ ...s, heroTitleAr: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("cms.site.heroSubtitleEn")}</Label>
+                <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.heroSubtitle}
                   onChange={(e) => setSite((s) => ({ ...s, heroSubtitle: e.target.value }))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>{t("cms.site.heroSubtitleAr")}</Label>
+                <Input
+                  dir="rtl"
+                  className="cms-field-ar"
+                  value={site.heroSubtitleAr}
+                  onChange={(e) => setSite((s) => ({ ...s, heroSubtitleAr: e.target.value }))}
+                />
+              </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>Hero image</Label>
+                <Label>{t("cms.site.heroImage")}</Label>
                 <p className="text-muted-foreground text-xs">
-                  Uploaded images are stored as base64 (data URLs) in the database.
+                  {t("cms.site.heroImageHint")}
                 </p>
                 <Input
                   type="file"
@@ -209,9 +308,9 @@ export function CmsPage() {
                   onChange={(e) => {
                     const f = e.target.files?.[0]
                     if (!f) return
-                    void readImageDataUrl(f)
+                    void readImageDataUrl(f, imageMessages)
                       .then((data) => setSite((s) => ({ ...s, heroImageBase64: data })))
-                      .catch((err) => toast.error(err instanceof Error ? err.message : "Failed"))
+                      .catch((err) => toast.error(err instanceof Error ? err.message : t("actions.failed")))
                     e.target.value = ""
                   }}
                 />
@@ -229,88 +328,133 @@ export function CmsPage() {
                       size="sm"
                       onClick={() => setSite((s) => ({ ...s, heroImageBase64: "" }))}
                     >
-                      Remove image
+                      {t("cms.site.removeImage")}
                     </Button>
                   </div>
                 ) : null}
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>About (plain text / markdown)</Label>
+                <Label>{t("cms.site.aboutEn")}</Label>
                 <Textarea
                   rows={5}
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.aboutMarkdown}
                   onChange={(e) => setSite((s) => ({ ...s, aboutMarkdown: e.target.value }))}
                 />
               </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t("cms.site.aboutAr")}</Label>
+                <Textarea
+                  rows={5}
+                  dir="rtl"
+                  className="cms-field-ar"
+                  value={site.aboutMarkdownAr}
+                  onChange={(e) => setSite((s) => ({ ...s, aboutMarkdownAr: e.target.value }))}
+                />
+              </div>
               <div className="space-y-2">
-                <Label>Contact phone</Label>
+                <Label>{t("cms.site.contactPhone")}</Label>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.contactPhone}
                   onChange={(e) => setSite((s) => ({ ...s, contactPhone: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Contact email</Label>
+                <Label>{t("cms.site.contactEmail")}</Label>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.contactEmail}
                   onChange={(e) => setSite((s) => ({ ...s, contactEmail: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Facebook page URL</Label>
+                <Label>{t("cms.site.facebookUrl")}</Label>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   placeholder="https://facebook.com/yourpage"
                   value={site.facebookUrl}
                   onChange={(e) => setSite((s) => ({ ...s, facebookUrl: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Instagram page URL</Label>
+                <Label>{t("cms.site.instagramUrl")}</Label>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   placeholder="https://instagram.com/yourpage"
                   value={site.instagramUrl}
                   onChange={(e) => setSite((s) => ({ ...s, instagramUrl: e.target.value }))}
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>Address</Label>
+                <Label>{t("cms.site.addressEn")}</Label>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.address}
                   onChange={(e) => setSite((s) => ({ ...s, address: e.target.value }))}
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label>Footer note</Label>
+                <Label>{t("cms.site.addressAr")}</Label>
+                <Input
+                  dir="rtl"
+                  className="cms-field-ar"
+                  value={site.addressAr}
+                  onChange={(e) => setSite((s) => ({ ...s, addressAr: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t("cms.site.footerNoteEn")}</Label>
                 <p className="text-muted-foreground text-xs">
-                  Short message under contact details in the footer (e.g. hours or tagline).
+                  {t("cms.site.footerNoteHint")}
                 </p>
                 <Input
+                  dir="ltr"
+                  className="cms-field-en"
                   value={site.footerNote}
                   onChange={(e) => setSite((s) => ({ ...s, footerNote: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>{t("cms.site.footerNoteAr")}</Label>
+                <Input
+                  dir="rtl"
+                  className="cms-field-ar"
+                  value={site.footerNoteAr}
+                  onChange={(e) => setSite((s) => ({ ...s, footerNoteAr: e.target.value }))}
                 />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Branding &amp; public page text</CardTitle>
-              <CardDescription>
-                White-label the marketing site: header, SEO, page titles, and home page cards. Leave a
-                field empty to use the built-in default for that spot.
-              </CardDescription>
+            <CardHeader className="text-start">
+              <CardTitle>{t("cms.site.brandingTitle")}</CardTitle>
+              <CardDescription>{t("cms.site.brandingDesc")}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-8">
+            <CardContent className="space-y-8 text-start">
+              <CmsLocaleTabs value={copyLocale} onChange={setCopyLocale} />
+              <div
+                key={copyLocale}
+                dir={cmsContentDir(copyLocale)}
+                className="cms-marketing-form space-y-8 text-start"
+              >
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Header</h3>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t("cms.site.header")}</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Small badge (upper line)</Label>
+                    <Label>{t("cms.site.badgeLabel")}</Label>
                     <Input
-                      placeholder="e.g. CLINIC NAME"
-                      value={marketing.nav?.badge ?? ""}
+                      placeholder={t("cms.site.badgePlaceholder")}
+                      value={marketingLocale.nav?.badge ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           nav: { ...m.nav, badge: e.target.value },
                         }))
@@ -318,13 +462,13 @@ export function CmsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Main title next to badge</Label>
-                    <p className="text-muted-foreground text-xs">If empty, uses clinic name above.</p>
+                    <Label>{t("cms.site.navTitleLabel")}</Label>
+                    <p className="text-muted-foreground text-xs">{t("cms.site.navTitleHint")}</p>
                     <Input
-                      placeholder="e.g. Smile Studio"
-                      value={marketing.nav?.title ?? ""}
+                      placeholder={t("cms.site.navTitlePlaceholder")}
+                      value={marketingLocale.nav?.title ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           nav: { ...m.nav, title: e.target.value },
                         }))
@@ -336,16 +480,16 @@ export function CmsPage() {
 
               <section className="space-y-3">
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-                  SEO (browser tab)
+                  {t("cms.site.seo")}
                 </h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Meta title</Label>
+                    <Label>{t("cms.site.metaTitle")}</Label>
                     <Input
-                      placeholder="Default: clinic name"
-                      value={marketing.meta?.title ?? ""}
+                      placeholder={t("cms.site.metaTitlePlaceholder")}
+                      value={marketingLocale.meta?.title ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           meta: { ...m.meta, title: e.target.value },
                         }))
@@ -353,13 +497,13 @@ export function CmsPage() {
                     />
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label>Meta description</Label>
+                    <Label>{t("cms.site.metaDescription")}</Label>
                     <Textarea
                       rows={2}
-                      placeholder="Short summary for Google / social previews"
-                      value={marketing.meta?.description ?? ""}
+                      placeholder={t("cms.site.metaDescriptionPlaceholder")}
+                      value={marketingLocale.meta?.description ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           meta: { ...m.meta, description: e.target.value },
                         }))
@@ -370,15 +514,15 @@ export function CmsPage() {
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Footer</h3>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t("cms.site.footer")}</h3>
                 <div className="space-y-2">
-                  <Label>Legal / credit line (bottom right)</Label>
+                  <Label>{t("cms.site.legalLine")}</Label>
                   <Textarea
                     rows={2}
-                    placeholder="Second line under © year — e.g. your company tagline"
-                    value={marketing.footer?.legalLine ?? ""}
+                    placeholder={t("cms.site.legalLinePlaceholder")}
+                    value={marketingLocale.footer?.legalLine ?? ""}
                     onChange={(e) =>
-                      setMarketing((m) => ({
+                      setMarketingLocale((m) => ({
                         ...m,
                         footer: { ...m.footer, legalLine: e.target.value },
                       }))
@@ -388,26 +532,26 @@ export function CmsPage() {
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Page intros</h3>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t("cms.site.pageIntros")}</h3>
                 <p className="text-muted-foreground text-xs">
-                  Headlines and helper text on Services, Gallery, Blog, and Book.
+                  {t("cms.site.pageIntrosHint")}
                 </p>
                 <div className="grid gap-6 sm:grid-cols-2">
                   {(
                     [
-                      ["book", "Book"],
-                      ["services", "Services"],
-                      ["gallery", "Gallery"],
-                      ["blog", "Blog"],
+                      ["book", t("cms.site.pageBook")],
+                      ["services", t("cms.site.pageServices")],
+                      ["gallery", t("cms.site.pageGallery")],
+                      ["blog", t("cms.site.pageBlog")],
                     ] as const
                   ).map(([key, label]) => (
                     <div key={key} className="space-y-2 rounded-lg border p-3">
                       <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{label}</p>
                       <Input
-                        placeholder="Page title"
-                        value={marketing.pages?.[key]?.title ?? ""}
+                        placeholder={t("cms.site.pageTitlePlaceholder")}
+                        value={marketingLocale.pages?.[key]?.title ?? ""}
                         onChange={(e) =>
-                          setMarketing((m) => ({
+                          setMarketingLocale((m) => ({
                             ...m,
                             pages: {
                               ...m.pages,
@@ -418,10 +562,10 @@ export function CmsPage() {
                       />
                       <Textarea
                         rows={2}
-                        placeholder="Subtitle"
-                        value={marketing.pages?.[key]?.subtitle ?? ""}
+                        placeholder={t("cms.site.subtitlePlaceholder")}
+                        value={marketingLocale.pages?.[key]?.subtitle ?? ""}
                         onChange={(e) =>
-                          setMarketing((m) => ({
+                          setMarketingLocale((m) => ({
                             ...m,
                             pages: {
                               ...m.pages,
@@ -432,12 +576,12 @@ export function CmsPage() {
                       />
                       {key !== "book" ? (
                         <Input
-                          placeholder="Empty state message"
+                          placeholder={t("cms.site.emptyPlaceholder")}
                           value={
-                            (marketing.pages?.[key] as { empty?: string } | undefined)?.empty ?? ""
+                            (marketingLocale.pages?.[key] as { empty?: string } | undefined)?.empty ?? ""
                           }
                           onChange={(e) =>
-                            setMarketing((m) => ({
+                            setMarketingLocale((m) => ({
                               ...m,
                               pages: {
                                 ...m.pages,
@@ -456,15 +600,15 @@ export function CmsPage() {
               </section>
 
               <section className="space-y-3 border-t border-slate-200 pt-6 dark:border-slate-800">
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Homepage extras</h3>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t("cms.site.homeExtras")}</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Primary button label</Label>
+                    <Label>{t("cms.site.ctaPrimary")}</Label>
                     <Input
-                      placeholder="Book a visit"
-                      value={marketing.home?.ctas?.primary ?? ""}
+                      placeholder={t("cms.site.ctaPrimaryPlaceholder")}
+                      value={marketingLocale.home?.ctas?.primary ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           home: {
                             ...m.home,
@@ -475,12 +619,12 @@ export function CmsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Secondary button label</Label>
+                    <Label>{t("cms.site.ctaSecondary")}</Label>
                     <Input
-                      placeholder="Explore services"
-                      value={marketing.home?.ctas?.secondary ?? ""}
+                      placeholder={t("cms.site.ctaSecondaryPlaceholder")}
+                      value={marketingLocale.home?.ctas?.secondary ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           home: {
                             ...m.home,
@@ -491,11 +635,11 @@ export function CmsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Hero image caption — title</Label>
+                    <Label>{t("cms.site.captionTitle")}</Label>
                     <Input
-                      value={marketing.home?.imageCaption?.title ?? ""}
+                      value={marketingLocale.home?.imageCaption?.title ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           home: {
                             ...m.home,
@@ -509,11 +653,11 @@ export function CmsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Hero image caption — subtitle</Label>
+                    <Label>{t("cms.site.captionSubtitle")}</Label>
                     <Input
-                      value={marketing.home?.imageCaption?.subtitle ?? ""}
+                      value={marketingLocale.home?.imageCaption?.subtitle ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           home: {
                             ...m.home,
@@ -527,13 +671,13 @@ export function CmsPage() {
                     />
                   </div>
                   <div className="space-y-2 sm:col-span-2">
-                    <Label>When no hero image is set</Label>
+                    <Label>{t("cms.site.noHeroHint")}</Label>
                     <Textarea
                       rows={2}
-                      placeholder="Hint text in the image placeholder"
-                      value={marketing.home?.heroEmptyHint ?? ""}
+                      placeholder={t("cms.site.noHeroPlaceholder")}
+                      value={marketingLocale.home?.heroEmptyHint ?? ""}
                       onChange={(e) =>
-                        setMarketing((m) => ({
+                        setMarketingLocale((m) => ({
                           ...m,
                           home: { ...m.home, heroEmptyHint: e.target.value },
                         }))
@@ -541,18 +685,15 @@ export function CmsPage() {
                     />
                   </div>
                 </div>
-                <p className="text-muted-foreground text-xs">
-                  Three feature cards under the hero (left column). Leave both fields empty on a row to
-                  drop that card when saving (defaults apply if all rows empty).
-                </p>
+                <p className="text-muted-foreground text-xs">{t("cms.site.featuresHint")}</p>
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
                     <div className="space-y-1">
-                      <Label>Feature {i + 1} title</Label>
+                      <Label>{t("cms.site.featureTitle", { n: i + 1 })}</Label>
                       <Input
-                        value={marketing.home?.features?.[i]?.title ?? ""}
+                        value={marketingLocale.home?.features?.[i]?.title ?? ""}
                         onChange={(e) => {
-                          const features = [...(marketing.home?.features ?? [])]
+                          const features = [...(marketingLocale.home?.features ?? [])]
                           while (features.length <= i) {
                             features.push({ title: "", description: "" })
                           }
@@ -561,7 +702,7 @@ export function CmsPage() {
                             title: e.target.value,
                             description: features[i]?.description ?? "",
                           }
-                          setMarketing((m) => ({
+                          setMarketingLocale((m) => ({
                             ...m,
                             home: { ...m.home, features },
                           }))
@@ -569,11 +710,11 @@ export function CmsPage() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label>Feature {i + 1} description</Label>
+                      <Label>{t("cms.site.featureDesc", { n: i + 1 })}</Label>
                       <Input
-                        value={marketing.home?.features?.[i]?.description ?? ""}
+                        value={marketingLocale.home?.features?.[i]?.description ?? ""}
                         onChange={(e) => {
-                          const features = [...(marketing.home?.features ?? [])]
+                          const features = [...(marketingLocale.home?.features ?? [])]
                           while (features.length <= i) {
                             features.push({ title: "", description: "" })
                           }
@@ -581,7 +722,7 @@ export function CmsPage() {
                             title: features[i]?.title ?? "",
                             description: e.target.value,
                           }
-                          setMarketing((m) => ({
+                          setMarketingLocale((m) => ({
                             ...m,
                             home: { ...m.home, features },
                           }))
@@ -591,20 +732,21 @@ export function CmsPage() {
                   </div>
                 ))}
               </section>
+              </div>
             </CardContent>
           </Card>
 
-          <div className="flex flex-wrap items-center justify-end gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/40">
-            <p className="mr-auto text-xs text-slate-600 dark:text-slate-400">
-              Saves homepage fields, contact info, and all branding text above.
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+            <p className="text-start text-xs text-slate-600 dark:text-slate-400">
+              {t("cms.saveSiteHint")}
             </p>
             <LoadingButton
               type="button"
               loading={savingSite}
-              loadingText="Saving…"
+              loadingText={t("actions.saving")}
               onClick={() => void saveSite()}
             >
-              Save all site settings
+              {t("cms.saveSite")}
             </LoadingButton>
           </div>
         </TabsContent>
@@ -647,6 +789,12 @@ type SlotsListResponse = {
 }
 
 function SlotsTab() {
+  const { t } = useTranslation("admin")
+  const imageMessages: ImageMessages = {
+    chooseFile: t("cms.imageChooseFile"),
+    tooLarge: t("cms.imageTooLarge"),
+    readFailed: t("cms.imageReadFailed"),
+  }
   const [addingSlot, setAddingSlot] = useState(false)
   const [deletingSlotId, setDeletingSlotId] = useState<string | null>(null)
   const [slotsLoading, setSlotsLoading] = useState(true)
@@ -690,7 +838,7 @@ function SlotsTab() {
         setPage(d.totalPages)
       }
     } catch {
-      toast.error("Could not load slots")
+      toast.error(t("cms.slots.loadFailed"))
     } finally {
       setSlotsLoading(false)
     }
@@ -712,12 +860,12 @@ function SlotsTab() {
           label: label || null,
         }),
       })
-      toast.success("Slot added")
+      toast.success(t("cms.slots.added"))
       setStartsAt("")
       setEndsAt("")
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setAddingSlot(false)
     }
@@ -727,10 +875,10 @@ function SlotsTab() {
     setDeletingSlotId(id)
     try {
       await api(`/api/admin/booking-slots/${id}`, { method: "DELETE" })
-      toast.success("Removed")
+      toast.success(t("cms.slots.removed"))
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setDeletingSlotId(null)
     }
@@ -742,59 +890,52 @@ function SlotsTab() {
         method: "PATCH",
         body: JSON.stringify({ isActive }),
       })
-      toast.success(isActive ? "Slot is visible on /book" : "Slot hidden from /book")
+      toast.success(isActive ? t("cms.slots.visibleOnBook") : t("cms.slots.hiddenFromBook"))
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     }
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Bookable slots</CardTitle>
-        <CardDescription>
-          Only slots that are <strong>Active</strong> and whose <strong>end</strong> is still in the
-          future (compared to <strong>server time in UTC</strong>) appear on{" "}
-          <code className="text-xs">/book</code>. The datetime picker uses your PC&apos;s local time;
-          if a slot disappears later, its <strong>End</strong> has passed in UTC. New slots are rejected
-          if the end time is already in the past. Large slot lists are paginated here so the admin UI
-          stays fast.
-        </CardDescription>
+        <CardTitle>{t("cms.slots.title")}</CardTitle>
+        <CardDescription className="text-start">{t("cms.slots.desc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1">
-            <Label>Starts</Label>
+            <Label>{t("cms.slots.starts")}</Label>
             <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Ends</Label>
+            <Label>{t("cms.slots.ends")}</Label>
             <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Capacity</Label>
+            <Label>{t("cms.slots.capacity")}</Label>
             <Input value={capacity} onChange={(e) => setCapacity(e.target.value)} />
           </div>
           <div className="space-y-1">
-            <Label>Label (optional)</Label>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Chair 1" />
+            <Label>{t("cms.slots.labelOptional")}</Label>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("cms.slots.labelPlaceholder")} />
           </div>
         </div>
         <LoadingButton
           type="button"
           loading={addingSlot}
-          loadingText="Adding…"
+          loadingText={t("actions.adding")}
           onClick={() => void addSlot()}
           disabled={!startsAt || !endsAt}
         >
-          Add slot
+          {t("cms.slots.addSlot")}
         </LoadingButton>
 
         <div className="space-y-4 border-t border-slate-200/80 pt-6 dark:border-slate-800">
           <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
             <div className="space-y-1 lg:min-w-[200px]">
-              <Label>Time range</Label>
+              <Label>{t("cms.slots.timeRange")}</Label>
               <Select
                 value={windowFilter}
                 onValueChange={(v) => {
@@ -803,26 +944,26 @@ function SlotsTab() {
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Range" />
+                  <SelectValue placeholder={t("cms.slots.rangePlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="upcoming">Upcoming (not ended)</SelectItem>
-                  <SelectItem value="past">Past (ended)</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="upcoming">{t("cms.slots.upcoming")}</SelectItem>
+                  <SelectItem value="past">{t("cms.slots.past")}</SelectItem>
+                  <SelectItem value="all">{t("cms.slots.all")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="min-w-0 flex-1 space-y-1 lg:max-w-md">
-              <Label htmlFor="slot-search">Label contains</Label>
+              <Label htmlFor="slot-search">{t("cms.slots.labelContains")}</Label>
               <Input
                 id="slot-search"
                 value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
-                placeholder="Search label…"
+                placeholder={t("cms.slots.searchLabel")}
               />
             </div>
             <div className="space-y-1 lg:min-w-[120px]">
-              <Label>Per page</Label>
+              <Label>{t("cms.slots.perPage")}</Label>
               <Select
                 value={String(pageSize)}
                 onValueChange={(v) => {
@@ -843,14 +984,18 @@ function SlotsTab() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-start text-xs">
               {slotsLoading
-                ? "Loading…"
+                ? t("actions.loading")
                 : total === 0
-                  ? "No slots match."
-                  : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
+                  ? t("cms.slots.noMatch")
+                  : t("cms.slots.showing", {
+                      from: (page - 1) * pageSize + 1,
+                      to: Math.min(page * pageSize, total),
+                      total,
+                    })}
             </p>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 [dir=rtl]:flex-row-reverse">
               <Button
                 type="button"
                 variant="outline"
@@ -858,10 +1003,10 @@ function SlotsTab() {
                 disabled={slotsLoading || page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
-                Previous
+                {t("actions.previous")}
               </Button>
               <span className="text-muted-foreground text-xs tabular-nums">
-                Page {page} / {totalPages}
+                {t("cms.slots.pageOf", { page, total: totalPages })}
               </span>
               <Button
                 type="button"
@@ -870,16 +1015,16 @@ function SlotsTab() {
                 disabled={slotsLoading || page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
-                Next
+                {t("actions.next")}
               </Button>
             </div>
           </div>
 
           <ul className="space-y-2 text-sm">
             {slotsLoading ? (
-              <li className="text-muted-foreground py-8 text-center text-sm">Loading slots…</li>
+              <li className="text-muted-foreground py-8 text-center text-sm">{t("cms.slots.loadingSlots")}</li>
             ) : slots.length === 0 ? (
-              <li className="text-muted-foreground py-8 text-center text-sm">No rows on this page.</li>
+              <li className="text-muted-foreground py-8 text-center text-sm">{t("cms.slots.noRows")}</li>
             ) : (
               slots.map((s) => {
                 const ended = new Date(s.endsAt).getTime() <= Date.now()
@@ -888,32 +1033,34 @@ function SlotsTab() {
                     key={s.id}
                     className="flex flex-col gap-3 rounded-lg border border-slate-200/80 px-3 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="min-w-0 space-y-1">
+                    <div className="min-w-0 space-y-1 text-start">
                       <p className="font-medium text-slate-900 dark:text-slate-100">
-                        {new Date(s.startsAt).toLocaleString()} → {new Date(s.endsAt).toLocaleString()}
-                        {s.label ? ` · ${s.label}` : ""} · cap {s.capacity} · {s.taken}/{s.capacity}{" "}
-                        booked
+                        <span dir="ltr" className="inline-block">
+                          {new Date(s.startsAt).toLocaleString()} – {new Date(s.endsAt).toLocaleString()}
+                        </span>
+                        {s.label ? ` · ${s.label}` : ""} · {t("cms.slots.capacity")} {s.capacity} ·{" "}
+                        {s.taken}/{s.capacity} {t("cms.slots.booked")}
                       </p>
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         {!s.isActive ? (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-100">
-                            Off — not shown on /book
+                            {t("cms.slots.offNotShown")}
                           </span>
                         ) : ended ? (
                           <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                            Ended — not shown on /book
+                            {t("cms.slots.endedNotShown")}
                           </span>
                         ) : (
                           <span className="rounded-full bg-teal-100 px-2 py-0.5 font-medium text-teal-900 dark:bg-teal-950/50 dark:text-teal-100">
-                            Live on /book
+                            {t("cms.slots.liveOnBook")}
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-3 sm:justify-end">
+                    <div className="flex shrink-0 flex-wrap items-center gap-3 sm:ms-auto sm:justify-end">
                       <div className="flex items-center gap-2">
                         <Label htmlFor={`slot-active-${s.id}`} className="text-xs whitespace-nowrap">
-                          Active
+                          {t("cms.slots.active")}
                         </Label>
                         <Switch
                           id={`slot-active-${s.id}`}
@@ -930,7 +1077,7 @@ function SlotsTab() {
                         disabled={deletingSlotId !== null && deletingSlotId !== s.id}
                         onClick={() => void remove(s.id)}
                       >
-                        Delete
+                        {t("actions.delete")}
                       </LoadingButton>
                     </div>
                   </li>
@@ -945,6 +1092,12 @@ function SlotsTab() {
 }
 
 function ServicesTab() {
+  const { t } = useTranslation("admin")
+  const imageMessages: ImageMessages = {
+    chooseFile: t("cms.imageChooseFile"),
+    tooLarge: t("cms.imageTooLarge"),
+    readFailed: t("cms.imageReadFailed"),
+  }
   const [addingService, setAddingService] = useState(false)
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null)
   const [items, setItems] = useState<
@@ -958,8 +1111,11 @@ function ServicesTab() {
     }>
   >([])
   const [title, setTitle] = useState("")
+  const [titleAr, setTitleAr] = useState("")
   const [description, setDescription] = useState("")
+  const [descriptionAr, setDescriptionAr] = useState("")
   const [priceLabel, setPriceLabel] = useState("")
+  const [priceLabelAr, setPriceLabelAr] = useState("")
   const [newImageBase64, setNewImageBase64] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -968,7 +1124,7 @@ function ServicesTab() {
   }, [])
 
   useEffect(() => {
-    void load().catch(() => toast.error("Could not load services"))
+    void load().catch(() => toast.error(t("cms.services.loadFailed")))
   }, [load])
 
   async function add() {
@@ -978,19 +1134,25 @@ function ServicesTab() {
         method: "POST",
         body: JSON.stringify({
           title,
+          titleAr: titleAr || null,
           description,
+          descriptionAr: descriptionAr || null,
           priceLabel: priceLabel || null,
+          priceLabelAr: priceLabelAr || null,
           imageBase64: newImageBase64 ?? null,
         }),
       })
-      toast.success("Service added")
+      toast.success(t("cms.services.added"))
       setTitle("")
+      setTitleAr("")
       setDescription("")
+      setDescriptionAr("")
       setPriceLabel("")
+      setPriceLabelAr("")
       setNewImageBase64(null)
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setAddingService(false)
     }
@@ -1000,10 +1162,10 @@ function ServicesTab() {
     setDeletingServiceId(id)
     try {
       await api(`/api/admin/services/${id}`, { method: "DELETE" })
-      toast.success("Deleted")
+      toast.success(t("actions.remove"))
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setDeletingServiceId(null)
     }
@@ -1012,28 +1174,50 @@ function ServicesTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Services</CardTitle>
-        <CardDescription>Listed on the public /services page.</CardDescription>
+        <CardTitle>{t("cms.services.title")}</CardTitle>
+        <CardDescription>{t("cms.services.desc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>Title</Label>
+          <Label>{t("cms.services.titleEn")}</Label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Description</Label>
+          <Label>{t("cms.services.titleAr")}</Label>
+          <Input dir="rtl" value={titleAr} onChange={(e) => setTitleAr(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label>{t("cms.services.descriptionEn")}</Label>
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Price label</Label>
+          <Label>{t("cms.services.descriptionAr")}</Label>
+          <Textarea
+            rows={3}
+            dir="rtl"
+            value={descriptionAr}
+            onChange={(e) => setDescriptionAr(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>{t("cms.services.priceEn")}</Label>
           <Input
-            placeholder="From $99"
+            placeholder={t("cms.services.pricePlaceholderEn")}
             value={priceLabel}
             onChange={(e) => setPriceLabel(e.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <Label>Image (optional)</Label>
+          <Label>{t("cms.services.priceAr")}</Label>
+          <Input
+            dir="rtl"
+            placeholder={t("cms.services.pricePlaceholderAr")}
+            value={priceLabelAr}
+            onChange={(e) => setPriceLabelAr(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>{t("cms.services.imageOptional")}</Label>
           <Input
             type="file"
             accept="image/*"
@@ -1041,9 +1225,9 @@ function ServicesTab() {
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (!f) return
-              void readImageDataUrl(f)
+              void readImageDataUrl(f, imageMessages)
                 .then(setNewImageBase64)
-                .catch((err) => toast.error(err instanceof Error ? err.message : "Failed"))
+                .catch((err) => toast.error(err instanceof Error ? err.message : t("actions.failed")))
               e.target.value = ""
             }}
           />
@@ -1052,7 +1236,7 @@ function ServicesTab() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={newImageBase64} alt="" className="h-14 w-20 rounded border object-cover" />
               <Button type="button" variant="outline" size="sm" onClick={() => setNewImageBase64(null)}>
-                Clear
+                {t("actions.clear")}
               </Button>
             </div>
           ) : null}
@@ -1060,11 +1244,11 @@ function ServicesTab() {
         <LoadingButton
           type="button"
           loading={addingService}
-          loadingText="Adding…"
+          loadingText={t("actions.adding")}
           onClick={() => void add()}
           disabled={!title || !description}
         >
-          Add service
+          {t("cms.services.addService")}
         </LoadingButton>
         <ul className="space-y-2">
           {items.map((s) => (
@@ -1082,7 +1266,7 @@ function ServicesTab() {
                   />
                 ) : null}
                 <span className="min-w-0 truncate">
-                  {s.title} {s.published ? "" : "(hidden)"}
+                  {s.title} {s.published ? "" : t("cms.services.hidden")}
                 </span>
               </span>
               <LoadingButton
@@ -1094,7 +1278,7 @@ function ServicesTab() {
                 disabled={deletingServiceId !== null && deletingServiceId !== s.id}
                 onClick={() => void remove(s.id)}
               >
-                Delete
+                {t("actions.delete")}
               </LoadingButton>
             </li>
           ))}
@@ -1105,6 +1289,12 @@ function ServicesTab() {
 }
 
 function BlogTab() {
+  const { t } = useTranslation("admin")
+  const imageMessages: ImageMessages = {
+    chooseFile: t("cms.imageChooseFile"),
+    tooLarge: t("cms.imageTooLarge"),
+    readFailed: t("cms.imageReadFailed"),
+  }
   const [addingPost, setAddingPost] = useState(false)
   const [deletingPostId, setDeletingPostId] = useState<string | null>(null)
   const [posts, setPosts] = useState<
@@ -1112,8 +1302,11 @@ function BlogTab() {
   >([])
   const [slug, setSlug] = useState("")
   const [title, setTitle] = useState("")
+  const [titleAr, setTitleAr] = useState("")
   const [excerpt, setExcerpt] = useState("")
+  const [excerptAr, setExcerptAr] = useState("")
   const [content, setContent] = useState("")
+  const [contentAr, setContentAr] = useState("")
   const [coverImageBase64, setCoverImageBase64] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -1122,7 +1315,7 @@ function BlogTab() {
   }, [])
 
   useEffect(() => {
-    void load().catch(() => toast.error("Could not load blog"))
+    void load().catch(() => toast.error(t("cms.blog.loadFailed")))
   }, [load])
 
   async function add() {
@@ -1133,21 +1326,27 @@ function BlogTab() {
         body: JSON.stringify({
           slug,
           title,
+          titleAr: titleAr || null,
           excerpt: excerpt || null,
+          excerptAr: excerptAr || null,
           content,
+          contentAr: contentAr || null,
           coverImageBase64: coverImageBase64 ?? null,
           published: true,
         }),
       })
-      toast.success("Post created")
+      toast.success(t("cms.blog.created"))
       setSlug("")
       setTitle("")
+      setTitleAr("")
       setExcerpt("")
+      setExcerptAr("")
       setContent("")
+      setContentAr("")
       setCoverImageBase64(null)
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setAddingPost(false)
     }
@@ -1157,10 +1356,10 @@ function BlogTab() {
     setDeletingPostId(id)
     try {
       await api(`/api/admin/blog/${id}`, { method: "DELETE" })
-      toast.success("Deleted")
+      toast.success(t("actions.remove"))
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setDeletingPostId(null)
     }
@@ -1169,30 +1368,42 @@ function BlogTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Blog</CardTitle>
-        <CardDescription>URL: /blog/your-slug</CardDescription>
+        <CardTitle>{t("cms.blog.title")}</CardTitle>
+        <CardDescription>{t("cms.blog.desc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label>Slug</Label>
-            <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="whitening-tips" />
+            <Label>{t("cms.blog.slug")}</Label>
+            <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={t("cms.blog.slugPlaceholder")} />
           </div>
           <div className="space-y-1">
-            <Label>Title</Label>
+            <Label>{t("cms.services.titleEn")}</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>{t("cms.services.titleAr")}</Label>
+            <Input dir="rtl" value={titleAr} onChange={(e) => setTitleAr(e.target.value)} />
           </div>
         </div>
         <div className="space-y-1">
-          <Label>Excerpt</Label>
+          <Label>{t("cms.blog.excerptEn")}</Label>
           <Input value={excerpt} onChange={(e) => setExcerpt(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label>Content</Label>
+          <Label>{t("cms.blog.excerptAr")}</Label>
+          <Input dir="rtl" value={excerptAr} onChange={(e) => setExcerptAr(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("cms.blog.contentEn")}</Label>
           <Textarea rows={6} value={content} onChange={(e) => setContent(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label>Cover image (optional)</Label>
+          <Label>{t("cms.blog.contentAr")}</Label>
+          <Textarea rows={6} dir="rtl" value={contentAr} onChange={(e) => setContentAr(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("cms.blog.coverOptional")}</Label>
           <Input
             type="file"
             accept="image/*"
@@ -1200,9 +1411,9 @@ function BlogTab() {
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (!f) return
-              void readImageDataUrl(f)
+              void readImageDataUrl(f, imageMessages)
                 .then(setCoverImageBase64)
-                .catch((err) => toast.error(err instanceof Error ? err.message : "Failed"))
+                .catch((err) => toast.error(err instanceof Error ? err.message : t("actions.failed")))
               e.target.value = ""
             }}
           />
@@ -1211,7 +1422,7 @@ function BlogTab() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={coverImageBase64} alt="" className="h-16 max-w-xs rounded border object-cover" />
               <Button type="button" variant="outline" size="sm" onClick={() => setCoverImageBase64(null)}>
-                Clear
+                {t("actions.clear")}
               </Button>
             </div>
           ) : null}
@@ -1219,17 +1430,17 @@ function BlogTab() {
         <LoadingButton
           type="button"
           loading={addingPost}
-          loadingText="Publishing…"
+          loadingText={t("actions.publishing")}
           onClick={() => void add()}
           disabled={!slug || !title || !content}
         >
-          Publish post
+          {t("cms.blog.publishPost")}
         </LoadingButton>
         <ul className="space-y-2 text-sm">
           {posts.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-2 rounded border px-3 py-2">
               <span>
-                {p.title} ({p.slug}) {p.published ? "" : "· draft"}
+                {p.title} ({p.slug}) {p.published ? "" : t("cms.blog.draft")}
               </span>
               <LoadingButton
                 size="sm"
@@ -1240,7 +1451,7 @@ function BlogTab() {
                 disabled={deletingPostId !== null && deletingPostId !== p.id}
                 onClick={() => void remove(p.id)}
               >
-                Delete
+                {t("actions.delete")}
               </LoadingButton>
             </li>
           ))}
@@ -1251,6 +1462,12 @@ function BlogTab() {
 }
 
 function GalleryTab() {
+  const { t } = useTranslation("admin")
+  const imageMessages: ImageMessages = {
+    chooseFile: t("cms.imageChooseFile"),
+    tooLarge: t("cms.imageTooLarge"),
+    readFailed: t("cms.imageReadFailed"),
+  }
   const [addingGallery, setAddingGallery] = useState(false)
   const [deletingGalleryId, setDeletingGalleryId] = useState<string | null>(null)
   const [images, setImages] = useState<
@@ -1258,6 +1475,7 @@ function GalleryTab() {
   >([])
   const [pendingImageBase64, setPendingImageBase64] = useState<string | null>(null)
   const [caption, setCaption] = useState("")
+  const [captionAr, setCaptionAr] = useState("")
 
   const load = useCallback(async () => {
     const d = await api<{ images: typeof images }>("/api/admin/gallery")
@@ -1265,26 +1483,31 @@ function GalleryTab() {
   }, [])
 
   useEffect(() => {
-    void load().catch(() => toast.error("Could not load gallery"))
+    void load().catch(() => toast.error(t("cms.gallery.loadFailed")))
   }, [load])
 
   async function add() {
     if (!pendingImageBase64) {
-      toast.error("Choose an image first")
+      toast.error(t("cms.gallery.chooseFirst"))
       return
     }
     setAddingGallery(true)
     try {
       await api("/api/admin/gallery", {
         method: "POST",
-        body: JSON.stringify({ imageBase64: pendingImageBase64, caption: caption || null }),
+        body: JSON.stringify({
+          imageBase64: pendingImageBase64,
+          caption: caption || null,
+          captionAr: captionAr || null,
+        }),
       })
-      toast.success("Image added")
+      toast.success(t("cms.gallery.added"))
       setPendingImageBase64(null)
       setCaption("")
+      setCaptionAr("")
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setAddingGallery(false)
     }
@@ -1294,10 +1517,10 @@ function GalleryTab() {
     setDeletingGalleryId(id)
     try {
       await api(`/api/admin/gallery/${id}`, { method: "DELETE" })
-      toast.success("Removed")
+      toast.success(t("cms.slots.removed"))
       await load()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed")
+      toast.error(e instanceof Error ? e.message : t("actions.failed"))
     } finally {
       setDeletingGalleryId(null)
     }
@@ -1306,12 +1529,12 @@ function GalleryTab() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gallery</CardTitle>
-        <CardDescription>Images are stored as base64 in the database.</CardDescription>
+        <CardTitle>{t("cms.gallery.title")}</CardTitle>
+        <CardDescription>{t("cms.gallery.desc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-1">
-          <Label>Image file</Label>
+          <Label>{t("cms.gallery.imageFile")}</Label>
           <Input
             type="file"
             accept="image/*"
@@ -1319,9 +1542,9 @@ function GalleryTab() {
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (!f) return
-              void readImageDataUrl(f)
+              void readImageDataUrl(f, imageMessages)
                 .then(setPendingImageBase64)
-                .catch((err) => toast.error(err instanceof Error ? err.message : "Failed"))
+                .catch((err) => toast.error(err instanceof Error ? err.message : t("actions.failed")))
               e.target.value = ""
             }}
           />
@@ -1330,19 +1553,23 @@ function GalleryTab() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={pendingImageBase64} alt="" className="h-16 w-24 rounded border object-cover" />
               <Button type="button" variant="outline" size="sm" onClick={() => setPendingImageBase64(null)}>
-                Clear
+                {t("actions.clear")}
               </Button>
             </div>
           ) : null}
         </div>
         <div className="space-y-1">
-          <Label>Caption</Label>
+          <Label>{t("cms.gallery.captionEn")}</Label>
           <Input value={caption} onChange={(e) => setCaption(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>{t("cms.gallery.captionAr")}</Label>
+          <Input dir="rtl" value={captionAr} onChange={(e) => setCaptionAr(e.target.value)} />
         </div>
         <LoadingButton
           type="button"
           loading={addingGallery}
-          loadingText="Adding…"
+          loadingText={t("actions.adding")}
           onClick={() => void add()}
           disabled={!pendingImageBase64}
         >
@@ -1358,7 +1585,7 @@ function GalleryTab() {
                   alt=""
                   className="h-12 w-16 shrink-0 rounded border object-cover"
                 />
-                <span className="truncate text-muted-foreground">{img.caption ?? "—"}</span>
+                <span className="truncate text-muted-foreground">{img.caption ?? t("cms.gallery.noCaption")}</span>
               </span>
               <LoadingButton
                 size="sm"
@@ -1369,7 +1596,7 @@ function GalleryTab() {
                 disabled={deletingGalleryId !== null && deletingGalleryId !== img.id}
                 onClick={() => void remove(img.id)}
               >
-                Delete
+                {t("actions.delete")}
               </LoadingButton>
             </li>
           ))}

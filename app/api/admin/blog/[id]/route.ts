@@ -26,8 +26,11 @@ const patchSchema = z.object({
     .refine((s) => /^[a-z0-9-]+$/.test(s), { message: "Invalid slug characters" })
     .optional(),
   title: z.string().trim().min(1).optional(),
+  titleAr: z.string().nullable().optional(),
   excerpt: z.string().nullable().optional(),
+  excerptAr: z.string().nullable().optional(),
   content: z.string().trim().min(1).optional(),
+  contentAr: z.string().nullable().optional(),
   coverImageBase64: optionalStoredImageSchema,
   published: z.boolean().optional(),
 })
@@ -66,8 +69,11 @@ export async function PATCH(
       data: {
         ...(parsed.data.slug !== undefined ? { slug: parsed.data.slug } : {}),
         ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+        ...(parsed.data.titleAr !== undefined ? { titleAr: parsed.data.titleAr } : {}),
         ...(parsed.data.excerpt !== undefined ? { excerpt: parsed.data.excerpt } : {}),
+        ...(parsed.data.excerptAr !== undefined ? { excerptAr: parsed.data.excerptAr } : {}),
         ...(parsed.data.content !== undefined ? { content: parsed.data.content } : {}),
+        ...(parsed.data.contentAr !== undefined ? { contentAr: parsed.data.contentAr } : {}),
         ...(parsed.data.coverImageBase64 !== undefined
           ? {
               coverImageBase64:

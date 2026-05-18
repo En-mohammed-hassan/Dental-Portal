@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react"
 import { LayoutGrid, View } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
-import { fdiToArchAlias, fdiToothLabel, FDI_CHAINS } from "@/lib/dental/fdi-teeth"
+import { fdiToArchAlias, FDI_CHAINS, isValidFdiToothCode } from "@/lib/dental/fdi-teeth"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -65,6 +66,7 @@ function ChainRow({
   onToggle,
   disabled,
   readOnly,
+  toothLabel,
 }: {
   label: string
   codes: readonly string[]
@@ -72,6 +74,7 @@ function ChainRow({
   onToggle: (code: string) => void
   disabled?: boolean
   readOnly: boolean
+  toothLabel: (code: string) => string
 }) {
   return (
     <section className="space-y-2">
@@ -85,7 +88,7 @@ function ChainRow({
               type="button"
               disabled={disabled || readOnly}
               onClick={() => onToggle(code)}
-              title={fdiToothLabel(code)}
+              title={toothLabel(code)}
               className={cn(
                 "group relative rounded-xl border p-2 transition-all",
                 "focus-visible:ring-primary/35 focus-visible:outline-none focus-visible:ring-2",
@@ -124,20 +127,33 @@ export function TeethTreatedPicker({
   disabled,
   id,
   readOnly = false,
-  title = "Mouth Teeth Chart",
-  description = "Select treated teeth using full-mouth chain view with aliases (UR/UL/LR/LL).",
+  title,
+  description,
   triggerLabel,
 }: TeethTreatedPickerProps) {
+  const { t } = useTranslation("admin")
   const [open, setOpen] = useState(false)
 
   const selected = useMemo(() => new Set(value), [value])
 
+  const localizedToothLabel = (code: string) => {
+    if (!isValidFdiToothCode(code)) return code
+    const quadrant = Number(code[0])
+    const tooth = Number(code[1])
+    const quad = t(`teethChart.quadrants.${quadrant}`)
+    const name = t(`teethChart.toothNames.${tooth}`)
+    return `${code} · ${fdiToArchAlias(code)} · ${quad} · ${name}`
+  }
+
+  const dialogTitle = title ?? t("teethChart.title")
+  const dialogDescription = description ?? t("teethChart.description")
+
   const summary =
     value.length === 0
       ? readOnly
-        ? "No teeth recorded"
-        : "No teeth selected"
-      : `${value.length} selected · ${value.join(", ")}`
+        ? t("teethChart.noTeethRecorded")
+        : t("teethChart.noTeethSelected")
+      : t("teethChart.selectedSummary", { count: value.length, codes: value.join(", ") })
 
   function toggle(code: string) {
     if (readOnly) return
@@ -152,7 +168,7 @@ export function TeethTreatedPicker({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>Teeth treated (FDI)</Label>
+      <Label htmlFor={id}>{t("teethChart.label")}</Label>
       <Button
         id={id}
         type="button"
@@ -170,31 +186,36 @@ export function TeethTreatedPicker({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <LayoutGrid className="size-4" />
-              {title}
+              {dialogTitle}
             </DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
+            <DialogDescription>{dialogDescription}</DialogDescription>
           </DialogHeader>
 
           <div className="max-h-[70vh] space-y-4 overflow-y-auto rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
             <div className="rounded-lg border border-dashed border-slate-300/70 bg-white/60 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
-              Naming standard: alias + FDI code. Example: <strong>UL7 (27)</strong>,{" "}
-              <strong>UR6 (16)</strong>, <strong>LL7 (37)</strong>.
+              {t("teethChart.namingStandard", {
+                ul7: "UL7 (27)",
+                ur6: "UR6 (16)",
+                ll7: "LL7 (37)",
+              })}
             </div>
             <ChainRow
-              label="Upper Arch (Right -> Left)"
+              label={t("teethChart.upperArch")}
               codes={FDI_CHAINS.upper}
               selected={selected}
               onToggle={toggle}
               disabled={disabled}
               readOnly={readOnly}
+              toothLabel={localizedToothLabel}
             />
             <ChainRow
-              label="Lower Arch (Right -> Left)"
+              label={t("teethChart.lowerArch")}
               codes={FDI_CHAINS.lower}
               selected={selected}
               onToggle={toggle}
               disabled={disabled}
               readOnly={readOnly}
+              toothLabel={localizedToothLabel}
             />
           </div>
 
@@ -208,11 +229,11 @@ export function TeethTreatedPicker({
                   onClick={() => onChange([])}
                   disabled={disabled || value.length === 0}
                 >
-                  Clear
+                  {t("teethChart.clear")}
                 </Button>
               ) : null}
               <Button type="button" onClick={() => setOpen(false)}>
-                {readOnly ? "Close" : "Done"}
+                {readOnly ? t("teethChart.close") : t("teethChart.done")}
               </Button>
             </div>
           </DialogFooter>

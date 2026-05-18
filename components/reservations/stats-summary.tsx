@@ -1,3 +1,7 @@
+"use client"
+
+import { useTranslation } from "react-i18next"
+
 import { Card, CardContent } from "@/components/ui/card"
 
 interface StatsSummaryProps {
@@ -11,23 +15,25 @@ export function StatsSummary({
   upcomingCount,
   emergencyCount,
 }: StatsSummaryProps) {
+  const { t } = useTranslation("admin")
+
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Card className="gap-2 py-4">
         <CardContent className="px-4">
-          <p className="text-muted-foreground text-sm">Total Waiting</p>
+          <p className="text-muted-foreground text-sm">{t("reservations.statsWaiting")}</p>
           <p className="text-2xl font-bold">{waitingCount}</p>
         </CardContent>
       </Card>
       <Card className="gap-2 py-4">
         <CardContent className="px-4">
-          <p className="text-muted-foreground text-sm">Total Upcoming</p>
+          <p className="text-muted-foreground text-sm">{t("reservations.statsUpcoming")}</p>
           <p className="text-2xl font-bold">{upcomingCount}</p>
         </CardContent>
       </Card>
       <Card className="gap-2 border-red-300 py-4 dark:border-red-900">
         <CardContent className="px-4">
-          <p className="text-muted-foreground text-sm">Emergency Cases</p>
+          <p className="text-muted-foreground text-sm">{t("reservations.statsEmergency")}</p>
           <p className="text-2xl font-bold text-red-600">{emergencyCount}</p>
         </CardContent>
       </Card>

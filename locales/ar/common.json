@@ -1,0 +1,71 @@
+{
+  "nav": {
+    "services": "الخدمات",
+    "blog": "المدونة",
+    "gallery": "المعرض",
+    "book": "حجز موعد",
+    "myVisits": "زياراتي",
+    "home": "الرئيسية",
+    "signIn": "تسجيل الدخول",
+    "signOut": "تسجيل الخروج",
+    "staffLogin": "دخول الموظفين",
+    "menu": "القائمة",
+    "toggleMenu": "فتح القائمة",
+    "dashboard": "لوحة التحكم"
+  },
+  "social": {
+    "facebook": "فيسبوك",
+    "instagram": "إنستغرام"
+  },
+  "actions": {
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "add": "إضافة",
+    "close": "إغلاق",
+    "confirm": "تأكيد",
+    "loading": "جاري التحميل…",
+    "retry": "إعادة المحاولة",
+    "back": "رجوع",
+    "next": "التالي",
+    "previous": "السابق",
+    "submit": "إرسال",
+    "search": "بحث",
+    "view": "عرض",
+    "create": "إنشاء",
+    "update": "تحديث",
+    "publish": "نشر",
+    "unpublish": "إلغاء النشر"
+  },
+  "language": {
+    "label": "اللغة",
+    "en": "English",
+    "ar": "العربية"
+  },
+  "theme": {
+    "toggle": "تبديل المظهر"
+  },
+  "errors": {
+    "requestFailed": "فشل الطلب",
+    "generic": "حدث خطأ. يرجى المحاولة مرة أخرى.",
+    "notFound": "الصفحة غير موجودة",
+    "unauthorized": "لم تسجّل الدخول.",
+    "forbidden": "ليس لديك صلاحية."
+  },
+  "footer": {
+    "contact": "تواصل معنا",
+    "followUs": "تابعنا",
+    "about": "من نحن",
+    "quickLinks": "روابط سريعة"
+  },
+  "errorsPage": {
+    "oops": "عذراً!",
+    "somethingWrong": "حدث خطأ ما",
+    "unexpected": "حدث خطأ غير متوقع. يمكنك إعادة المحاولة أو العودة للرئيسية.",
+    "tryAgain": "إعادة المحاولة",
+    "goHome": "الصفحة الرئيسية",
+    "notFoundTitle": "الصفحة غير موجودة",
+    "notFoundBody": "الصفحة التي تبحث عنها غير موجودة أو نُقلت."
+  }
+}

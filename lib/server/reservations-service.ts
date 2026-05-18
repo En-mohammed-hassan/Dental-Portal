@@ -16,6 +16,12 @@ import { type ReservationsData } from "@/types/reservations"
 import { sortByAppointmentDate } from "@/utils/patient"
 
 import { normalizeTeethTreated } from "@/lib/dental/fdi-teeth"
+import { applyPatientBalanceOnFinish } from "@/lib/server/patient-balance"
+import {
+  getBillingSummariesForPatients,
+  mergeBillingIntoProfile,
+  type PatientBillingSummary,
+} from "@/lib/server/patient-billing-summary"
 import { buildProfilePhoneCandidates, normalizeToE164 } from "@/lib/phone"
 
 import { prisma } from "./db"
@@ -23,9 +29,7 @@ import { prisma } from "./db"
 // Safely check if fields are supported (handle cases where DMMF might not be available during build)
 function checkFieldSupport(modelName: string, fieldName: string): boolean {
   try {
-    // Check if Prisma and DMMF are available
     if (typeof Prisma === "undefined" || !Prisma.dmmf || !Prisma.dmmf.datamodel) {
-      // During build or when Prisma client isn't generated, assume fields exist
       return true
     }
     return (
@@ -36,9 +40,33 @@ function checkFieldSupport(modelName: string, fieldName: string): boolean {
       ) ?? false
     )
   } catch {
-    // If DMMF is not available (e.g., during build), assume field exists if schema has it
-    // This is a safe default since the schema should be up to date
     return true
+  }
+}
+
+/** Strict check: false when Prisma client is stale or not generated (avoids invalid select errors). */
+function checkFieldSupportStrict(modelName: string, fieldName: string): boolean {
+  try {
+    if (typeof Prisma === "undefined" || !Prisma.dmmf?.datamodel?.models) {
+      return false
+    }
+    return Prisma.dmmf.datamodel.models.some(
+      (model) =>
+        model.name === modelName && model.fields.some((field) => field.name === fieldName)
+    )
+  } catch {
+    return false
+  }
+}
+
+function supportsModel(modelName: string): boolean {
+  try {
+    if (typeof Prisma === "undefined" || !Prisma.dmmf?.datamodel?.models) {
+      return false
+    }
+    return Prisma.dmmf.datamodel.models.some((model) => model.name === modelName)
+  } catch {
+    return false
   }
 }
 
@@ -49,13 +77,16 @@ const supportsReservationXrayImageBase64Field = checkFieldSupport(
   "xrayImageBase64"
 )
 
-// Debug: Log if field is supported (remove in production)
-if (process.env.NODE_ENV !== "production") {
-  console.log(
-    "[DEBUG] Reservation xrayImageBase64 field supported:",
-    supportsReservationXrayImageBase64Field
-  )
-}
+const supportsChargeCents = checkFieldSupportStrict("Reservation", "chargeCents")
+const supportsPaymentCents = checkFieldSupportStrict("Reservation", "paymentCents")
+const supportsBalanceAfterCents = checkFieldSupportStrict("Reservation", "balanceAfterCents")
+const supportsBalanceDueCents = checkFieldSupportStrict("PatientProfile", "balanceDueCents")
+const supportsPatientBalance =
+  supportsChargeCents &&
+  supportsPaymentCents &&
+  supportsBalanceAfterCents &&
+  supportsBalanceDueCents &&
+  supportsModel("PatientLedgerEntry")
 
 const bloodTypeToDb: Record<AppBloodType, string> = {
   "A+": "A_POS",
@@ -142,6 +173,9 @@ function mapReservationFromDb(patient: {
   treatmentNote?: string | null
   xrayImageBase64?: string | null
   feeCents?: number | null
+  chargeCents?: number | null
+  paymentCents?: number | null
+  balanceAfterCents?: number | null
   paymentStatus?: string | null
   canalsCount?: number | null
   teethTreated?: unknown
@@ -152,6 +186,9 @@ function mapReservationFromDb(patient: {
     age: number
     bloodType: string
     xrayImageBase64?: string | null
+    balanceDueCents?: number
+    totalChargedCents?: number
+    totalPaidCents?: number
   }
 }): Patient {
   const ps = patient.paymentStatus
@@ -169,7 +206,13 @@ function mapReservationFromDb(patient: {
     completedAt: patient.completedAt ? patient.completedAt.toISOString() : null,
     treatmentNote: patient.treatmentNote ?? null,
     xrayImageBase64: patient.xrayImageBase64 ?? null,
-    feeCents: patient.feeCents ?? null,
+    feeCents: patient.feeCents ?? patient.chargeCents ?? null,
+    chargeCents: patient.chargeCents ?? patient.feeCents ?? null,
+    paymentCents: patient.paymentCents ?? null,
+    balanceAfterCents: patient.balanceAfterCents ?? null,
+    balanceDueCents: patient.patient.balanceDueCents ?? 0,
+    totalChargedCents: 0,
+    totalPaidCents: 0,
     paymentStatus: ps && paymentStatusFromDb[ps] ? paymentStatusFromDb[ps] : null,
     canalsCount: patient.canalsCount ?? null,
     teethTreated: normalizeTeethTreated(patient.teethTreated),
@@ -177,7 +220,8 @@ function mapReservationFromDb(patient: {
   }
 }
 
-function mapPatientProfileFromDb(patient: {
+function mapPatientProfileFromDb(
+  patient: {
   id: string
   name: string
   phone: string
@@ -185,6 +229,7 @@ function mapPatientProfileFromDb(patient: {
   bloodType: string
   xrayImageBase64?: string | null
   xrayImageUrl?: string | null
+  balanceDueCents?: number
   createdAt: Date
   reservations?: Array<{
     id: string
@@ -197,14 +242,18 @@ function mapPatientProfileFromDb(patient: {
     treatmentNote?: string | null
     xrayImageBase64?: string | null
   }>
-}): PatientProfile {
-  return {
+},
+  billing?: PatientBillingSummary
+): PatientProfile {
+  return mergeBillingIntoProfile(
+    {
     id: patient.id,
     name: patient.name,
     phone: patient.phone,
     age: patient.age,
     bloodType: bloodTypeFromDb[patient.bloodType],
     xrayImageBase64: patient.xrayImageBase64 ?? patient.xrayImageUrl ?? null,
+    balanceDueCents: patient.balanceDueCents ?? 0,
     createdAt: patient.createdAt.toISOString(),
     linkedReservations: patient.reservations?.map((reservation) => ({
       id: reservation.id,
@@ -217,7 +266,9 @@ function mapPatientProfileFromDb(patient: {
       treatmentNote: reservation.treatmentNote ?? null,
       xrayImageBase64: reservation.xrayImageBase64 ?? null,
     })),
-  }
+  },
+    billing
+  )
 }
 
 async function ensureUniquePhone(phone: string, excludePatientId?: string): Promise<void> {
@@ -253,6 +304,7 @@ const getPatientSelect = () => ({
   phone: true,
   age: true,
   bloodType: true,
+  ...(supportsBalanceDueCents ? { balanceDueCents: true } : {}),
   ...(supportsXrayImageBase64Field ? { xrayImageBase64: true } : {}),
 })
 
@@ -268,6 +320,9 @@ const getReservationSelect = () => ({
   completedAt: true,
   treatmentNote: true,
   feeCents: true,
+  ...(supportsChargeCents ? { chargeCents: true } : {}),
+  ...(supportsPaymentCents ? { paymentCents: true } : {}),
+  ...(supportsBalanceAfterCents ? { balanceAfterCents: true } : {}),
   paymentStatus: true,
   canalsCount: true,
   teethTreated: true,
@@ -277,6 +332,27 @@ const getReservationSelect = () => ({
     select: getPatientSelect(),
   },
 })
+
+async function enrichPatientsWithBilling(patients: Patient[]): Promise<Patient[]> {
+  if (patients.length === 0) return patients
+  const balances = new Map(
+    patients.map((p) => [p.patientId, p.balanceDueCents ?? 0] as const)
+  )
+  const summaries = await getBillingSummariesForPatients(
+    patients.map((p) => p.patientId),
+    balances
+  )
+  return patients.map((p) => {
+    const summary = summaries.get(p.patientId)
+    if (!summary) return p
+    return {
+      ...p,
+      totalChargedCents: summary.totalChargedCents,
+      totalPaidCents: summary.totalPaidCents,
+      balanceDueCents: summary.balanceDueCents,
+    }
+  })
+}
 
 async function toReservationsData(): Promise<ReservationsData> {
   const [current, waiting, upcoming] = await Promise.all([
@@ -297,7 +373,7 @@ async function toReservationsData(): Promise<ReservationsData> {
     }),
   ])
 
-  return {
+  const mapped = {
     currentPatient: current
       ? mapReservationFromDb(current as Parameters<typeof mapReservationFromDb>[0])
       : null,
@@ -307,6 +383,23 @@ async function toReservationsData(): Promise<ReservationsData> {
     upcomingPatients: sortByAppointmentDate(
       upcoming.map((item) => mapReservationFromDb(item as Parameters<typeof mapReservationFromDb>[0]))
     ),
+    treatmentHistory: [] as Patient[],
+  }
+
+  const allPatients = [
+    ...(mapped.currentPatient ? [mapped.currentPatient] : []),
+    ...mapped.waitingPatients,
+    ...mapped.upcomingPatients,
+  ]
+  const enriched = await enrichPatientsWithBilling(allPatients)
+  const byId = new Map(enriched.map((p) => [p.id, p]))
+
+  return {
+    currentPatient: mapped.currentPatient
+      ? (byId.get(mapped.currentPatient.id) ?? mapped.currentPatient)
+      : null,
+    waitingPatients: mapped.waitingPatients.map((p) => byId.get(p.id) ?? p),
+    upcomingPatients: mapped.upcomingPatients.map((p) => byId.get(p.id) ?? p),
     treatmentHistory: [],
   }
 }
@@ -557,6 +650,8 @@ export async function finishTreatment(payload: {
   treatmentNote: string
   xrayImageBase64?: string | null
   feeCents?: number | null
+  chargeCents?: number | null
+  paymentCents?: number | null
   paymentStatus?: AppPaymentStatus | null
   canalsCount?: number | null
   teethTreated?: string[] | null
@@ -585,6 +680,16 @@ export async function finishTreatment(payload: {
       ? Math.max(0, Math.min(500_000_000, Math.round(Number(payload.feeCents))))
       : null
 
+  const chargeCents =
+    payload.chargeCents != null && Number.isFinite(Number(payload.chargeCents))
+      ? Math.max(0, Math.min(500_000_000, Math.round(Number(payload.chargeCents))))
+      : feeCents
+
+  const paymentCents =
+    payload.paymentCents != null && Number.isFinite(Number(payload.paymentCents))
+      ? Math.max(0, Math.min(500_000_000, Math.round(Number(payload.paymentCents))))
+      : null
+
   const canalsCount =
     payload.canalsCount != null && Number.isFinite(Number(payload.canalsCount))
       ? Math.min(8, Math.max(0, Math.round(Number(payload.canalsCount))))
@@ -595,27 +700,70 @@ export async function finishTreatment(payload: {
     ? payload.procedureSummary.trim().slice(0, 120)
     : null
 
-  const paymentStatus =
-    payload.paymentStatus && paymentStatusToDb[payload.paymentStatus]
-      ? paymentStatusToDb[payload.paymentStatus]
-      : null
-
   const updateData = {
     status: "COMPLETED" as const,
     completedAt: new Date(),
     treatmentNote: trimmed,
-    xrayImageBase64: xrayImage,
-    feeCents,
-    paymentStatus: paymentStatus as never,
+    ...(supportsReservationXrayImageBase64Field ? { xrayImageBase64: xrayImage } : {}),
+    feeCents: chargeCents,
+    ...(supportsChargeCents ? { chargeCents } : {}),
+    ...(supportsPaymentCents ? { paymentCents } : {}),
     canalsCount,
     teethTreated: teethNormalized === null ? null : (teethNormalized as Prisma.InputJsonValue),
     procedureSummary,
   }
 
-  await prisma.reservation.update({
-    where: { id: currentReservation.id },
-    data: updateData as never,
-  })
+  if (supportsPatientBalance) {
+    await prisma.$transaction(async (tx) => {
+      const balanceResult = await applyPatientBalanceOnFinish(tx, {
+        patientId: currentReservation.patientId,
+        reservationId: currentReservation.id,
+        chargeCents,
+        paymentCents,
+        feeCents,
+        note: trimmed,
+      })
+
+      await tx.reservation.update({
+        where: { id: currentReservation.id },
+        data: {
+          ...updateData,
+          balanceAfterCents: balanceResult.balanceDueCents,
+        } as never,
+      })
+    })
+  } else if (
+    supportsBalanceDueCents &&
+    ((chargeCents ?? 0) > 0 || (paymentCents ?? 0) > 0)
+  ) {
+    await prisma.$transaction(async (tx) => {
+      const profile = await tx.patientProfile.findUniqueOrThrow({
+        where: { id: currentReservation.patientId },
+        select: { balanceDueCents: true },
+      })
+      let running = profile.balanceDueCents ?? 0
+      if (chargeCents) running += chargeCents
+      if (paymentCents) running = Math.max(0, running - paymentCents)
+
+      await tx.patientProfile.update({
+        where: { id: currentReservation.patientId },
+        data: { balanceDueCents: running },
+      })
+
+      await tx.reservation.update({
+        where: { id: currentReservation.id },
+        data: {
+          ...updateData,
+          ...(supportsBalanceAfterCents ? { balanceAfterCents: running } : {}),
+        } as never,
+      })
+    })
+  } else {
+    await prisma.reservation.update({
+      where: { id: currentReservation.id },
+      data: updateData as never,
+    })
+  }
 
   const patientRow = await prisma.patientProfile.findUnique({
     where: { id: currentReservation.patientId },
@@ -717,8 +865,19 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
     },
   })
 
+  const balances = new Map(
+    patients.map((p) => [p.id, (p as { balanceDueCents?: number }).balanceDueCents ?? 0] as const)
+  )
+  const summaries = await getBillingSummariesForPatients(
+    patients.map((p) => p.id),
+    balances
+  )
+
   return patients.map((patient) =>
-    mapPatientProfileFromDb(patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0])
+    mapPatientProfileFromDb(
+      patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0],
+      summaries.get(patient.id)
+    )
   )
 }
 
@@ -781,7 +940,14 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
     throw error
   }
 
-  return mapPatientProfileFromDb(patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0])
+  const summaries = await getBillingSummariesForPatients(
+    [patient.id],
+    new Map([[patient.id, (patient as { balanceDueCents?: number }).balanceDueCents ?? 0]])
+  )
+  return mapPatientProfileFromDb(
+    patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0],
+    summaries.get(patient.id)
+  )
 }
 
 export async function updatePatientProfile(
@@ -851,7 +1017,14 @@ export async function updatePatientProfile(
     throw error
   }
 
-  return mapPatientProfileFromDb(patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0])
+  const summaries = await getBillingSummariesForPatients(
+    [patient.id],
+    new Map([[patient.id, (patient as { balanceDueCents?: number }).balanceDueCents ?? 0]])
+  )
+  return mapPatientProfileFromDb(
+    patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0],
+    summaries.get(patient.id)
+  )
 }
 
 export async function deletePatientProfile(patientId: string): Promise<void> {

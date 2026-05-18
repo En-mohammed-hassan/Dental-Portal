@@ -1,9 +1,14 @@
+"use client"
+
 import Link from "next/link"
-import { AlertCircle, Home, ArrowLeft } from "lucide-react"
+import { AlertCircle, ArrowLeft, Home } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 
 export default function NotFound() {
+  const { t } = useTranslation("common")
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md space-y-6 rounded-xl border bg-white/80 p-8 text-center shadow-lg dark:bg-slate-900/70">
@@ -12,22 +17,20 @@ export default function NotFound() {
         </div>
         <div className="space-y-2">
           <h1 className="text-3xl font-bold">404</h1>
-          <h2 className="text-xl font-semibold">Page not found</h2>
-          <p className="text-muted-foreground text-sm">
-            The page you requested does not exist or has been moved.
-          </p>
+          <h2 className="text-xl font-semibold">{t("errorsPage.notFoundTitle")}</h2>
+          <p className="text-muted-foreground text-sm">{t("errorsPage.notFoundBody")}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Button asChild variant="outline">
             <Link href="/">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Go home
+              <ArrowLeft className="me-2 h-4 w-4" />
+              {t("errorsPage.goHome")}
             </Link>
           </Button>
           <Button asChild>
             <Link href="/admin/reservations">
-              <Home className="mr-2 h-4 w-4" />
-              Staff dashboard
+              <Home className="me-2 h-4 w-4" />
+              {t("nav.dashboard")}
             </Link>
           </Button>
         </div>
@@ -35,3 +38,4 @@ export default function NotFound() {
     </div>
   )
 }
+

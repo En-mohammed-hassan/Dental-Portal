@@ -12,7 +12,10 @@ import {
 } from "libphonenumber-js"
 import toast from "react-hot-toast"
 import { ShieldCheck, Sparkles } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
+import { LanguageSwitcher } from "@/components/i18n/language-switcher"
+import { translateApiMessage } from "@/lib/i18n/toast"
 import { FadeIn } from "@/components/motion/motion-shell"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,6 +39,7 @@ const countryOptions = getCountries().map((country) => {
 type LoginKind = "admin" | "patient"
 
 export function SignInPage() {
+  const { t } = useTranslation("auth")
   const router = useRouter()
   const searchParams = useSearchParams()
   const nextParam = searchParams.get("next") ?? ""
@@ -73,11 +77,11 @@ export function SignInPage() {
     try {
       const digits = localNumber.replace(/[^\d]/g, "")
       if (digits.length < 6) {
-        throw new Error("Please enter a valid phone number.")
+        throw new Error(t("invalidPhone"))
       }
       const candidate = `+${getCountryCallingCode(patientCountry)}${digits.replace(/^0+/, "")}`
       if (!isValidPhoneNumber(candidate)) {
-        throw new Error("Phone number is not valid for selected country.")
+        throw new Error(t("invalidPhoneCountry"))
       }
 
       const res = await fetch("/api/auth/otp/send", {
@@ -98,12 +102,16 @@ export function SignInPage() {
       setNormalizedPhone(candidate)
       setPhoneKey(data.phoneKey ?? candidate)
       setStep("code")
-      toast.success("OTP requested. Call admin to get your code.")
+      toast.success(t("otpRequested"))
       if (data.fallbackReason === "country_not_eligible") {
-        toast("SMS is not eligible in this country, switched to secure in-app fallback.")
+        toast(t("otpFallbackHint"))
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      const message =
+        err instanceof Error
+          ? translateApiMessage(err.message, "auth:authFailed")
+          : t("authFailed")
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -127,10 +135,15 @@ export function SignInPage() {
         throw new Error(data.message ?? "Invalid code")
       }
       const kind = data.user?.kind ?? "patient"
-      toast.success(`Signed in as ${kind}`)
+      const roleLabel = kind === "admin" ? t("signedInAdmin") : t("signedInPatient")
+      toast.success(t("signedInAs", { role: roleLabel }))
       afterLogin(kind)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed")
+      const message =
+        err instanceof Error
+          ? translateApiMessage(err.message, "auth:authFailed")
+          : t("authFailed")
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -140,19 +153,22 @@ export function SignInPage() {
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-teal-100/80 via-white to-fuchsia-50/60 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-size-[40px_40px]" />
       <FadeIn className="relative mx-auto flex min-h-screen max-w-lg flex-col justify-center px-4 py-12 sm:px-6">
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
         <div className="mb-8 text-center">
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-teal-700 dark:text-slate-400 dark:hover:text-teal-400"
           >
             <Sparkles className="h-4 w-4" />
-            Back to website
+            {t("backToSite")}
           </Link>
           <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Sign in with OTP
+            {t("signInWithOtp")}
           </h1>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            One login flow for everyone. We auto-detect admin vs patient after OTP verification.
+            {t("signInDescription")}
           </p>
         </div>
 
@@ -160,17 +176,15 @@ export function SignInPage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldCheck className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-              Secure OTP Login
+              {t("secureOtpLogin")}
             </CardTitle>
-            <CardDescription>
-              Admin numbers are protected in database seed. Others log in as patients.
-            </CardDescription>
+            <CardDescription>{t("signInHint")}</CardDescription>
           </CardHeader>
           <CardContent>
             {step === "phone" ? (
               <form className="space-y-4" onSubmit={(e) => void sendOtp(e)}>
                 <div className="space-y-2">
-                  <Label htmlFor="country-code">Country code</Label>
+                  <Label htmlFor="country-code">{t("countryLabel")}</Label>
                   <Select
                     value={patientCountry}
                     onValueChange={(v) => setPatientCountry(v as CountryCode)}
@@ -190,37 +204,37 @@ export function SignInPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone-local">Phone number</Label>
+                  <Label htmlFor="phone-local">{t("phoneLabel")}</Label>
                   <Input
                     id="phone-local"
                     autoComplete="tel-national"
                     inputMode="tel"
-                    placeholder="Local number (e.g. 09xxxxxxxx)"
+                    placeholder={t("phonePlaceholder")}
                     value={localNumber}
                     onChange={(e) => setLocalNumber(e.target.value.replace(/[^\d]/g, ""))}
                     required
                   />
                   <p className="text-muted-foreground text-xs">
-                    Number is validated with global standards before sending OTP.
+                    {t("phoneValidationHint")}
                   </p>
                 </div>
 
                 <LoadingButton
                   className="h-11 w-full rounded-xl text-base"
                   loading={loading}
-                  loadingText="Requesting OTP…"
+                  loadingText={t("requestingOtp")}
                   type="submit"
                 >
-                  Send verification code
+                  {t("sendCode")}
                 </LoadingButton>
               </form>
             ) : (
               <form className="space-y-4" onSubmit={(e) => void verifyOtp(e)}>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Enter the 6-digit OTP for <span className="font-medium">{displayPhone}</span>.
+                  {t("enterOtpFor", { phone: displayPhone })}
                 </p>
                 <div className="space-y-2">
-                  <Label htmlFor="otp">Verification code</Label>
+                  <Label htmlFor="otp">{t("codeLabel")}</Label>
                   <Input
                     id="otp"
                     inputMode="numeric"
@@ -235,10 +249,10 @@ export function SignInPage() {
                 <LoadingButton
                   className="h-11 w-full rounded-xl text-base"
                   loading={loading}
-                  loadingText="Verifying…"
+                  loadingText={t("verifying")}
                   type="submit"
                 >
-                  Verify & sign in
+                  {t("verifyCode")}
                 </LoadingButton>
                 <LoadingButton
                   type="button"
@@ -251,18 +265,18 @@ export function SignInPage() {
                     setPhoneKey("")
                   }}
                 >
-                  Use a different number
+                  {t("useDifferentNumber")}
                 </LoadingButton>
               </form>
             )}
 
             <p className="mt-4 text-center text-sm text-slate-600 dark:text-slate-400">
-              New patient?{" "}
+              {t("noAccount")}{" "}
               <Link
                 className="font-medium text-teal-700 underline underline-offset-4 dark:text-teal-400"
                 href="/patient/register"
               >
-                Register first
+                {t("registerLink")}
               </Link>
             </p>
           </CardContent>

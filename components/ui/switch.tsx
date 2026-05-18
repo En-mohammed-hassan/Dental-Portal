@@ -2,13 +2,14 @@ import * as React from "react"
 import * as SwitchPrimitive from "@radix-ui/react-switch"
 
 import { cn } from "@/lib/utils"
-import { useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next"
 
 function Switch({
   className,
   ...props
 }: React.ComponentProps<typeof SwitchPrimitive.Root>) {
-  const isRtl = false
+  const { i18n } = useTranslation()
+  const isRtl = i18n.dir() === "rtl"
   const thumbClass = isRtl 
     ? "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block size-4 rounded-full ring-0 transition-transform data-[state=checked]:translate-x-0 data-[state=unchecked]:-translate-x-[calc(100%-2px)]"
     : "bg-background dark:data-[state=unchecked]:bg-foreground dark:data-[state=checked]:bg-primary-foreground pointer-events-none block size-4 rounded-full ring-0 transition-transform data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0";

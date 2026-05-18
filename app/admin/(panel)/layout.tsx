@@ -9,7 +9,7 @@ export default function AdminPanelLayout({
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-size-[44px_44px] opacity-40" />
       <AppNavbar />
 
-      <main className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="relative z-10 mx-auto flex w-full min-w-0 max-w-7xl flex-1 flex-col space-y-6 overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
         <AnimateMain>{children}</AnimateMain>
       </main>
 
@@ -23,7 +23,7 @@ export default function AdminPanelLayout({
           >
             https://www.mhd-hasan.site/
           </a>
-          <p className="whitespace-nowrap">© 2026 Mhd Hassan. All rights reserved.</p>
+          <p className="text-center sm:text-end">© 2026 Mhd Hassan. All rights reserved.</p>
         </div>
       </footer>
     </div>

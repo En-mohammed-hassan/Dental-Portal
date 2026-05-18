@@ -1,0 +1,71 @@
+{
+  "nav": {
+    "services": "Services",
+    "blog": "Blog",
+    "gallery": "Gallery",
+    "book": "Book",
+    "myVisits": "My visits",
+    "home": "Home",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "staffLogin": "Staff login",
+    "menu": "Menu",
+    "toggleMenu": "Toggle menu",
+    "dashboard": "Dashboard"
+  },
+  "social": {
+    "facebook": "Facebook",
+    "instagram": "Instagram"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "search": "Search",
+    "view": "View",
+    "create": "Create",
+    "update": "Update",
+    "publish": "Publish",
+    "unpublish": "Unpublish"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "ar": "العربية"
+  },
+  "theme": {
+    "toggle": "Toggle theme"
+  },
+  "errors": {
+    "requestFailed": "Request failed",
+    "generic": "Something went wrong. Please try again.",
+    "notFound": "Page not found",
+    "unauthorized": "You are not signed in.",
+    "forbidden": "You do not have permission."
+  },
+  "footer": {
+    "contact": "Contact",
+    "followUs": "Follow us",
+    "about": "About",
+    "quickLinks": "Quick links"
+  },
+  "errorsPage": {
+    "oops": "Oops!",
+    "somethingWrong": "Something went wrong",
+    "unexpected": "An unexpected error occurred. You can retry safely or return home.",
+    "tryAgain": "Try again",
+    "goHome": "Go home",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The page you're looking for doesn't exist or was moved."
+  }
+}

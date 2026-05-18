@@ -22,7 +22,8 @@ export async function POST(request: Request) {
       treatmentNote?: string
       xrayImageBase64?: string | null
       feeCents?: number | null
-      paymentStatus?: "unpaid" | "partial" | "paid" | null
+      chargeCents?: number | null
+      paymentCents?: number | null
       canalsCount?: number | null
       teethTreated?: string[] | null
       procedureSummary?: string | null
@@ -32,7 +33,8 @@ export async function POST(request: Request) {
       treatmentNote: payload.treatmentNote ?? "",
       xrayImageBase64: payload.xrayImageBase64 ?? null,
       feeCents: payload.feeCents ?? null,
-      paymentStatus: payload.paymentStatus ?? null,
+      chargeCents: payload.chargeCents ?? null,
+      paymentCents: payload.paymentCents ?? null,
       canalsCount: payload.canalsCount ?? null,
       teethTreated: payload.teethTreated ?? null,
       procedureSummary: payload.procedureSummary ?? null,

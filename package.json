@@ -9,7 +9,7 @@
     "build:turbo": "prisma generate && next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/fix-lightningcss-native.cjs",
     "db:generate": "prisma generate --no-engine",
     "db:push": "prisma db push",
     "db:studio": "prisma studio"
@@ -78,5 +78,8 @@
     "tailwindcss": "^4",
     "tw-animate-css": "^1.3.7",
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "lightningcss-win32-x64-msvc": "1.30.2"
   }
 }

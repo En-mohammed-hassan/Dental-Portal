@@ -3,6 +3,8 @@
 import { create } from "zustand"
 import toast from "react-hot-toast"
 
+import { i18n } from "@/lib/i18n/client"
+import { translateApiMessage } from "@/lib/i18n/toast"
 import { type FinishTreatmentInput, type NewReservationInput, type Patient } from "@/types/patient"
 import { type ReservationsApiResponse } from "@/types/reservations"
 
@@ -73,7 +75,10 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         errorMessage: null,
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load reservations"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.loadReservationsFailed")
+          : i18n.t("admin:toast.loadReservationsFailed")
       set({
         isLoading: false,
         hasHydrated: true,
@@ -90,9 +95,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         body: JSON.stringify(payload),
       })
       set({ ...response.data, errorMessage: null })
-      toast.success("Reservation added successfully")
+      toast.success(i18n.t("admin:toast.reservationAdded"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to add reservation"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.addReservationFailed")
+          : i18n.t("admin:toast.addReservationFailed")
       set({ errorMessage: message })
       toast.error(message)
       throw error
@@ -107,9 +115,12 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         method: "POST",
       })
       set({ ...response.data, errorMessage: null })
-      toast.success("Patient marked as arrived")
+      toast.success(i18n.t("admin:toast.markArrived"))
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to mark patient as arrived"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.markArrivedFailed")
+          : i18n.t("admin:toast.markArrivedFailed")
       set({ errorMessage: message })
       toast.error(message)
       throw error
@@ -125,10 +136,13 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         body: JSON.stringify({ replaceCurrent }),
       })
       set({ ...response.data, errorMessage: null })
-      toast.success("Treatment started successfully")
+      toast.success(i18n.t("admin:toast.treatmentStarted"))
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to start treatment"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.startTreatmentFailed")
+          : i18n.t("admin:toast.startTreatmentFailed")
       set({ errorMessage: message })
       toast.error(message)
       return false
@@ -144,18 +158,22 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         body: JSON.stringify({
           treatmentNote: payload.treatmentNote,
           xrayImageBase64: payload.xrayImageBase64 ?? null,
-          feeCents: payload.feeCents ?? null,
-          paymentStatus: payload.paymentStatus ?? null,
+          chargeCents: payload.chargeCents ?? payload.feeCents ?? null,
+          paymentCents: payload.paymentCents ?? null,
+          feeCents: payload.feeCents ?? payload.chargeCents ?? null,
           canalsCount: payload.canalsCount ?? null,
           teethTreated: payload.teethTreated ?? null,
           procedureSummary: payload.procedureSummary ?? null,
         }),
       })
       set({ ...response.data, errorMessage: null })
-      toast.success("Treatment completed successfully")
+      toast.success(i18n.t("admin:toast.treatmentCompleted"))
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to finish treatment"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.finishTreatmentFailed")
+          : i18n.t("admin:toast.finishTreatmentFailed")
       set({ errorMessage: message })
       toast.error(message)
       return false
@@ -170,10 +188,13 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         method: "DELETE",
       })
       set({ ...response.data, errorMessage: null })
-      toast.success("Reservation cancelled successfully")
+      toast.success(i18n.t("admin:toast.reservationCancelled"))
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to cancel reservation"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.cancelReservationFailed")
+          : i18n.t("admin:toast.cancelReservationFailed")
       set({ errorMessage: message })
       toast.error(message)
       return false
@@ -191,10 +212,13 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         }
       )
       set({ ...response.data, errorMessage: null })
-      toast.success("Reservation deleted successfully")
+      toast.success(i18n.t("admin:toast.reservationDeleted"))
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to delete reservation"
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.deleteReservationFailed")
+          : i18n.t("admin:toast.deleteReservationFailed")
       set({ errorMessage: message })
       toast.error(message)
       return false

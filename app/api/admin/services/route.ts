@@ -9,8 +9,11 @@ export const dynamic = "force-dynamic"
 
 const postSchema = z.object({
   title: z.string().min(1),
+  titleAr: z.string().nullable().optional(),
   description: z.string().min(1),
+  descriptionAr: z.string().nullable().optional(),
   priceLabel: z.string().nullable().optional(),
+  priceLabelAr: z.string().nullable().optional(),
   imageBase64: optionalStoredImageSchema,
   sortOrder: z.coerce.number().int().optional(),
   published: z.boolean().optional(),
@@ -41,8 +44,11 @@ export async function POST(request: Request) {
     const item = await prisma.serviceItem.create({
       data: {
         title: parsed.data.title,
+        titleAr: parsed.data.titleAr ?? null,
         description: parsed.data.description,
+        descriptionAr: parsed.data.descriptionAr ?? null,
         priceLabel: parsed.data.priceLabel ?? null,
+        priceLabelAr: parsed.data.priceLabelAr ?? null,
         imageBase64:
           parsed.data.imageBase64 === ""
             ? null
@@ -51,7 +57,7 @@ export async function POST(request: Request) {
         published: parsed.data.published ?? true,
       },
     })
-    return NextResponse.json({ item }, { status: 201 })
+    return NextResponse.json({ item })
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed"
     return NextResponse.json({ message }, { status: 500 })

@@ -2,23 +2,31 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 import { AdminLogoutButton } from "@/components/dashboard/admin-logout-button"
+import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-const navItems = [
-  { href: "/admin/reservations", label: "Reservations" },
-  { href: "/admin/patients", label: "Patient Management" },
-  { href: "/admin/history", label: "History" },
-  { href: "/admin/cms", label: "Website & slots" },
-]
-
 export function AppNavbar() {
+  const { t } = useTranslation("admin")
+  const { t: tc } = useTranslation("common")
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const navItems = useMemo(
+    () => [
+      { href: "/admin/reservations", label: t("nav.reservations") },
+      { href: "/admin/patients", label: t("nav.patients") },
+      { href: "/admin/history", label: t("nav.history") },
+      { href: "/admin/cms", label: t("nav.cms") },
+      { href: "/admin/stats", label: t("nav.stats") },
+    ],
+    [t]
+  )
 
   useEffect(() => {
     setMobileMenuOpen(false)
@@ -39,12 +47,12 @@ export function AppNavbar() {
     <header className="sticky top-0 z-30 border-b bg-white/65 backdrop-blur-xl dark:bg-slate-950/45">
       <div className="mx-auto w-full max-w-7xl px-3 py-2.5 sm:px-4 sm:py-3 lg:px-8">
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-shrink-0">
+          <div className="min-w-0 flex-1 pe-2">
             <p className="truncate text-[10px] font-medium tracking-wider text-slate-500 uppercase dark:text-slate-400 sm:text-xs">
-              Dentist Suite
+              {t("suiteBadge")}
             </p>
-            <h1 className="truncate text-sm font-semibold sm:text-base md:text-lg lg:text-xl">
-              Clinic Control Panel
+            <h1 className="hidden truncate text-sm font-semibold sm:block md:text-lg lg:text-xl">
+              {t("panelTitle")}
             </h1>
           </div>
 
@@ -69,20 +77,22 @@ export function AppNavbar() {
               })}
             </nav>
             <Button asChild size="sm" variant="ghost" className="hidden lg:inline-flex">
-              <Link href="/">Clinic website</Link>
+              <Link href="/">{t("clinicWebsite")}</Link>
             </Button>
+            <LanguageSwitcher />
             <AdminLogoutButton />
             <ThemeToggle />
           </div>
 
-          <div className="flex items-center gap-1.5 md:hidden">
-            <AdminLogoutButton />
+          <div className="flex shrink-0 items-center gap-1 md:hidden">
+            <LanguageSwitcher className="scale-90 sm:scale-100" />
+            <AdminLogoutButton compact />
             <ThemeToggle />
             <button
               className="rounded-md p-2 text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               type="button"
-              aria-label="Toggle menu"
+              aria-label={tc("nav.toggleMenu")}
               aria-expanded={mobileMenuOpen}
             >
               <svg
@@ -135,7 +145,7 @@ export function AppNavbar() {
               href="/"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Clinic website
+              {t("clinicWebsite")}
             </Link>
           </nav>
         )}

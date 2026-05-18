@@ -1,13 +1,16 @@
+"use client"
+
+import { useTranslation } from "react-i18next"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { useBookingTypeLabels } from "@/lib/i18n/use-admin-labels"
+import { PatientBillingPanel } from "@/components/billing/patient-billing-summary"
+import { parseLocale } from "@/lib/locale"
 import { cn } from "@/lib/utils"
 import { type Patient } from "@/types/patient"
-import {
-  bookingTypeBadgeClass,
-  bookingTypeLabels,
-  formatAppointmentDate,
-} from "@/utils/patient"
+import { bookingTypeBadgeClass, formatAppointmentDate } from "@/utils/patient"
 
 type CardVariant = "current" | "waiting" | "upcoming"
 type ExtendedCardVariant = CardVariant | "history"
@@ -31,8 +34,14 @@ export function PatientCard({
   onCancel,
   actionsDisabled = false,
 }: PatientCardProps) {
+  const { t, i18n } = useTranslation("admin")
+  const locale = parseLocale(i18n.language)
+  const bookingTypeLabels = useBookingTypeLabels()
+  const balanceDue = patient.balanceDueCents ?? 0
+  const totalCharged = patient.totalChargedCents ?? 0
+  const totalPaid = patient.totalPaidCents ?? 0
   const isEmergency = patient.bookingType === "emergency"
-  const isAdvance = patient.bookingType === "advance"
+  const showBilling = variant === "current" || totalCharged > 0 || totalPaid > 0 || balanceDue > 0
 
   return (
     <Card
@@ -52,33 +61,45 @@ export function PatientCard({
           </Badge>
         </div>
 
+        {showBilling ? (
+          <PatientBillingPanel
+            totalChargedCents={totalCharged}
+            totalPaidCents={totalPaid}
+            balanceDueCents={balanceDue}
+            locale={locale}
+            className="text-start"
+          />
+        ) : null}
+
         <div className="grid grid-cols-2 gap-2 text-sm">
           <p>
-            <span className="text-muted-foreground">Age:</span> {patient.age}
+            <span className="text-muted-foreground">{t("reservations.age")}:</span> {patient.age}
           </p>
           <p>
-            <span className="text-muted-foreground">Blood:</span> {patient.bloodType}
+            <span className="text-muted-foreground">{t("reservations.blood")}:</span>{" "}
+            {patient.bloodType}
           </p>
           <p className="col-span-2">
-            <span className="text-muted-foreground">Appointment:</span>{" "}
+            <span className="text-muted-foreground">{t("reservations.appointment")}:</span>{" "}
             {formatAppointmentDate(patient.appointmentDate)}
           </p>
         </div>
 
         {variant === "current" && (
           <Button className="w-full" disabled={actionsDisabled} onClick={onFinishTreatment}>
-            Finish Treatment
+            {t("reservations.finishTreatment")}
           </Button>
         )}
 
         {variant === "history" && (
           <div className="space-y-1">
             <p className="text-muted-foreground text-sm">
-              Completed: {patient.completedAt ? formatAppointmentDate(patient.completedAt) : "-"}
+              {t("reservations.completed")}:{" "}
+              {patient.completedAt ? formatAppointmentDate(patient.completedAt) : "-"}
             </p>
             <p className="text-sm">
-              <span className="text-muted-foreground">Note:</span>{" "}
-              {patient.treatmentNote?.trim() || "No note"}
+              <span className="text-muted-foreground">{t("reservations.note")}:</span>{" "}
+              {patient.treatmentNote?.trim() || t("reservations.noNote")}
             </p>
           </div>
         )}
@@ -90,20 +111,15 @@ export function PatientCard({
               disabled={actionsDisabled}
               onClick={() => onStartTreatment?.(patient.id)}
             >
-              Start Treatment
+              {t("reservations.startTreatment")}
             </Button>
             <Button
               className="flex-1"
               variant="outline"
               onClick={() => onCancel?.(patient.id)}
               disabled={actionsDisabled}
-              title={
-                isAdvance
-                  ? "Cancel this waiting reservation"
-                  : "Cancel this waiting reservation"
-              }
             >
-              Cancel
+              {t("reservations.cancel")}
             </Button>
           </div>
         )}
@@ -115,7 +131,7 @@ export function PatientCard({
               disabled={actionsDisabled}
               onClick={() => onMarkAsArrived?.(patient.id)}
             >
-              Mark as Arrived
+              {t("reservations.markArrived")}
             </Button>
             <Button
               className="flex-1"
@@ -123,7 +139,7 @@ export function PatientCard({
               onClick={() => onCancel?.(patient.id)}
               disabled={actionsDisabled}
             >
-              Cancel Reservation
+              {t("reservations.cancelReservation")}
             </Button>
           </div>
         )}

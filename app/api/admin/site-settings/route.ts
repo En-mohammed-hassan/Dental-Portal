@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireStaffApi } from "@/lib/api/require-staff"
+import { normalizeMarketingContent } from "@/lib/marketing-content"
 import { ensureSiteSettings } from "@/lib/server/site-settings"
 import { prisma } from "@/lib/server/db"
 import { formatZodIssues } from "@/lib/zod-errors"
@@ -13,16 +14,22 @@ export const dynamic = "force-dynamic"
 
 const putSchema = z.object({
   clinicName: z.string().min(1).optional(),
+  clinicNameAr: z.string().nullable().optional(),
   heroTitle: z.string().min(1).optional(),
+  heroTitleAr: z.string().nullable().optional(),
   heroSubtitle: z.string().min(1).optional(),
+  heroSubtitleAr: z.string().nullable().optional(),
   heroImageBase64: optionalStoredImageSchema,
   aboutMarkdown: z.string().nullable().optional(),
+  aboutMarkdownAr: z.string().nullable().optional(),
   contactPhone: z.string().nullable().optional(),
   contactEmail: z.string().nullable().optional(),
   facebookUrl: z.string().url().nullable().optional(),
   instagramUrl: z.string().url().nullable().optional(),
   address: z.string().nullable().optional(),
+  addressAr: z.string().nullable().optional(),
   footerNote: z.string().nullable().optional(),
+  footerNoteAr: z.string().nullable().optional(),
   marketingContent: z.unknown().optional(),
 })
 
@@ -33,7 +40,12 @@ export async function GET() {
   }
   await ensureSiteSettings()
   const site = await prisma.siteSettings.findUniqueOrThrow({ where: { id: "default" } })
-  return NextResponse.json({ site })
+  return NextResponse.json({
+    site: {
+      ...site,
+      marketingContent: normalizeMarketingContent(site.marketingContent),
+    },
+  })
 }
 
 export async function PUT(request: Request) {
@@ -76,7 +88,12 @@ export async function PUT(request: Request) {
           : {}),
       },
     })
-    return NextResponse.json({ site })
+    return NextResponse.json({
+      site: {
+        ...site,
+        marketingContent: normalizeMarketingContent(site.marketingContent),
+      },
+    })
   } catch (e) {
     const message = e instanceof Error ? e.message : "Update failed"
     return NextResponse.json({ message }, { status: 500 })

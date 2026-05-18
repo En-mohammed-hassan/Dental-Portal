@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 type Post = {
   title: string
@@ -12,6 +13,7 @@ type Post = {
 }
 
 export default function BlogPostPage() {
+  const { t } = useTranslation("marketing")
   const params = useParams()
   const slug = typeof params.slug === "string" ? params.slug : ""
   const [post, setPost] = useState<Post | null>(null)
@@ -22,21 +24,21 @@ export default function BlogPostPage() {
     void fetch(`/api/public/blog?slug=${encodeURIComponent(slug)}`)
       .then(async (r) => {
         if (!r.ok) {
-          setError("Post not found")
+          setError(t("blogPost.notFound"))
           return
         }
         const d = (await r.json()) as { post: Post }
         setPost(d.post)
       })
-      .catch(() => setError("Failed to load"))
-  }, [slug])
+      .catch(() => setError(t("blogPost.loadFailed")))
+  }, [slug, t])
 
   if (error) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-16 text-center">
         <p className="text-slate-600 dark:text-slate-400">{error}</p>
         <Link href="/blog" className="mt-4 inline-block text-sm text-teal-700 underline dark:text-teal-400">
-          Back to blog
+          {t("backToBlog")}
         </Link>
       </div>
     )
@@ -45,7 +47,7 @@ export default function BlogPostPage() {
   if (!post) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-1 px-4 py-16">
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="text-sm text-slate-500">{t("blogPost.loading")}</p>
       </div>
     )
   }
@@ -56,7 +58,7 @@ export default function BlogPostPage() {
         href="/blog"
         className="text-sm font-medium text-teal-700 hover:underline dark:text-teal-400"
       >
-        ← Blog
+        {t("blogPost.back")}
       </Link>
       <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">
         {post.title}

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { CheckCircle2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import toast from "react-hot-toast"
+import { useTranslation } from "react-i18next"
 
 import { BookingCalendar, type BookingSlot } from "@/components/booking/booking-calendar"
 import { useSiteContent } from "@/components/marketing/site-content-context"
@@ -18,6 +19,7 @@ type Me = {
 }
 
 export default function BookPage() {
+  const { t } = useTranslation("marketing")
   const site = useSiteContent()
   const [slots, setSlots] = useState<BookingSlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,8 +36,6 @@ export default function BookPage() {
 
   const loadSlots = useCallback(() => {
     setLoading(true)
-    // Range is computed on the server from real time — avoids empty results when the
-    // browser clock is wrong; optional query params are still clamped in the API.
     void fetch("/api/public/slots", { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) {
@@ -45,11 +45,11 @@ export default function BookPage() {
       })
       .then((d) => setSlots(d.slots ?? []))
       .catch(() => {
-        toast.error("Could not load appointment times. Try refreshing.")
+        toast.error(t("book.loadSlotsError"))
         setSlots([])
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void loadSlots()
@@ -60,7 +60,7 @@ export default function BookPage() {
 
   async function book(slotId: string) {
     if (!isPatient) {
-      toast.error("Sign in as a patient to book.")
+      toast.error(t("book.signInToBook"))
       return
     }
     setBooking(slotId)
@@ -74,15 +74,15 @@ export default function BookPage() {
       const data = (await res.json().catch(() => ({}))) as { message?: string }
       if (!res.ok) {
         if (res.status === 401) {
-          toast.error("Session expired — sign in again.")
+          toast.error(t("book.sessionExpired"))
           return
         }
-        throw new Error(data.message ?? "Booking failed")
+        throw new Error(data.message ?? t("book.bookingFailed"))
       }
-      toast.success("You’re booked! We’ll see you then.")
+      toast.success(t("book.bookingSuccess"))
       void loadSlots()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Booking failed")
+      toast.error(e instanceof Error ? e.message : t("book.bookingFailed"))
     } finally {
       setBooking(null)
     }
@@ -91,36 +91,32 @@ export default function BookPage() {
   const authBanner = !meLoading ? (
     isStaff ? (
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-        <span>You’re signed in as clinic staff.</span>
+        <span>{t("book.staffSignedIn")}</span>
         <Button asChild size="sm" variant="secondary" className="rounded-full">
-          <Link href="/admin/reservations">Open dashboard</Link>
+          <Link href="/admin/reservations">{t("book.openDashboard")}</Link>
         </Button>
       </div>
     ) : isPatient ? (
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-teal-200/80 bg-teal-50/90 px-4 py-3 text-sm text-teal-950 dark:border-teal-900/50 dark:bg-teal-950/30 dark:text-teal-100">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
-        <span>
-          Signed in as patient <span className="font-medium">{me?.phone}</span>
-        </span>
+        <span>{t("book.patientSignedIn", { phone: me?.phone ?? "" })}</span>
         <Button
           asChild
           size="sm"
           className="rounded-full border-2 border-teal-800 bg-white font-semibold text-teal-950 shadow-sm hover:bg-teal-50 dark:border-teal-400 dark:bg-slate-950 dark:text-teal-50 dark:hover:bg-teal-950/40"
         >
-          <Link href="/patient">My visits</Link>
+          <Link href="/patient">{t("book.myVisits")}</Link>
         </Button>
       </div>
     ) : (
       <div className="rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/40">
-        <p className="text-sm text-slate-700 dark:text-slate-300">
-          To reserve a time, create a patient profile and sign in with your phone.
-        </p>
+        <p className="text-sm text-slate-700 dark:text-slate-300">{t("book.registerPrompt")}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button asChild size="sm" className="rounded-full">
-            <Link href="/patient/register">Register</Link>
+            <Link href="/patient/register">{t("book.register")}</Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="rounded-full">
-            <Link href="/sign-in?mode=patient">Patient sign in</Link>
+            <Link href="/sign-in?mode=patient">{t("book.patientSignIn")}</Link>
           </Button>
         </div>
       </div>
