@@ -51,7 +51,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const phoneKey = adminPhone?.phone ?? profile!.phone
+    const phoneKey = adminPhone?.phone ?? profile?.phone
+    if (!phoneKey) {
+      return NextResponse.json(
+        { message: "This patient profile does not have a phone number." },
+        { status: 400 }
+      )
+    }
 
     const code = fixedOtpFromPhone(parsed.data.phone, country)
     if (!code) {

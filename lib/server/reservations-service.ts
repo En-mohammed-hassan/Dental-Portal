@@ -11,6 +11,8 @@ import {
   type BloodType as AppBloodType,
   type BookingType as AppBookingType,
   type ReservationStatus as AppReservationStatus,
+  type ServiceType as AppServiceType,
+  ALLOWED_RESERVATION_DURATIONS,
 } from "@/types/patient"
 import { type ReservationsData } from "@/types/reservations"
 import { sortByAppointmentDate } from "@/utils/patient"
@@ -23,6 +25,10 @@ import {
   type PatientBillingSummary,
 } from "@/lib/server/patient-billing-summary"
 import { buildProfilePhoneCandidates, normalizeToE164 } from "@/lib/phone"
+import {
+  CLINIC_HOURS_MESSAGE,
+  isWithinClinicHours,
+} from "@/lib/scheduling/clinic-hours"
 
 import { prisma } from "./db"
 
@@ -125,6 +131,33 @@ const bookingTypeFromDb: Record<string, AppBookingType> = {
   EMERGENCY: "emergency",
 }
 
+const serviceTypeToDb: Record<AppServiceType, "DENTAL" | "LASER"> = {
+  dental: "DENTAL",
+  laser: "LASER",
+}
+
+const serviceTypeFromDb: Record<string, AppServiceType> = {
+  DENTAL: "dental",
+  LASER: "laser",
+}
+
+const CLINIC_TIME_ZONE = process.env.CLINIC_TIME_ZONE || "Asia/Damascus"
+
+const clinicDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: CLINIC_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+})
+
+function clinicDayKey(date: Date): string {
+  const parts = clinicDayFormatter.formatToParts(date)
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+  return `${year}-${month}-${day}`
+}
+
 const reservationStatusFromDb: Record<string, AppReservationStatus> = {
   CURRENT: "current",
   WAITING: "waiting",
@@ -146,11 +179,26 @@ const paymentStatusFromDb: Record<string, AppPaymentStatus> = {
   PAID: "paid",
 }
 
+const optionalPhoneSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.string().trim().min(4, "Phone number is too short").nullable().optional()
+)
+
+const optionalAgeSchema = z.preprocess(
+  (value) => (value === "" || value == null ? null : value),
+  z.coerce.number().int().positive("Age must be greater than 0").nullable().optional()
+)
+
+const optionalBloodTypeSchema = z.preprocess(
+  (value) => (value === "" || value == null ? null : value),
+  z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).nullable().optional()
+)
+
 const patientProfilePayloadSchema = z.object({
   name: z.string().trim().min(3).max(80),
-  phone: z.string().min(4),
-  age: z.coerce.number().int().positive(),
-  bloodType: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]),
+  phone: optionalPhoneSchema,
+  age: optionalAgeSchema,
+  bloodType: optionalBloodTypeSchema,
   xrayImageBase64: z
     .string()
     .trim()
@@ -158,8 +206,8 @@ const patientProfilePayloadSchema = z.object({
       (value) => value === "" || /^data:image\/[a-zA-Z+.-]+;base64,/.test(value),
       "X-ray image must be a valid base64 image"
     )
-    .optional()
-    .or(z.literal("")),
+    .nullable()
+    .optional(),
 })
 
 function mapReservationFromDb(patient: {
@@ -167,6 +215,8 @@ function mapReservationFromDb(patient: {
   patientId: string
   bookingType: string
   appointmentDate: Date
+  endsAt: Date
+  serviceType: string
   hasArrived: boolean
   createdAt: Date
   completedAt?: Date | null
@@ -182,9 +232,9 @@ function mapReservationFromDb(patient: {
   procedureSummary?: string | null
   patient: {
     name: string
-    phone: string
-    age: number
-    bloodType: string
+    phone: string | null
+    age: number | null
+    bloodType: string | null
     xrayImageBase64?: string | null
     balanceDueCents?: number
     totalChargedCents?: number
@@ -198,9 +248,17 @@ function mapReservationFromDb(patient: {
     name: patient.patient.name,
     phone: patient.patient.phone,
     age: patient.patient.age,
-    bloodType: bloodTypeFromDb[patient.patient.bloodType],
+    bloodType: patient.patient.bloodType
+      ? bloodTypeFromDb[patient.patient.bloodType] ?? null
+      : null,
     bookingType: bookingTypeFromDb[patient.bookingType],
-    appointmentDate: patient.appointmentDate.toISOString().slice(0, 10),
+    appointmentDate: patient.appointmentDate.toISOString(),
+    endsAt: patient.endsAt.toISOString(),
+    durationMinutes: Math.max(
+      0,
+      Math.round((patient.endsAt.getTime() - patient.appointmentDate.getTime()) / 60_000)
+    ),
+    serviceType: serviceTypeFromDb[patient.serviceType] ?? "dental",
     hasArrived: patient.hasArrived,
     createdAt: patient.createdAt.toISOString(),
     completedAt: patient.completedAt ? patient.completedAt.toISOString() : null,
@@ -224,9 +282,9 @@ function mapPatientProfileFromDb(
   patient: {
   id: string
   name: string
-  phone: string
-  age: number
-  bloodType: string
+  phone: string | null
+  age: number | null
+  bloodType: string | null
   xrayImageBase64?: string | null
   xrayImageUrl?: string | null
   balanceDueCents?: number
@@ -236,6 +294,8 @@ function mapPatientProfileFromDb(
     bookingType: string
     status: string
     appointmentDate: Date
+    endsAt: Date
+    serviceType: string
     hasArrived: boolean
     createdAt: Date
     completedAt?: Date | null
@@ -251,7 +311,7 @@ function mapPatientProfileFromDb(
     name: patient.name,
     phone: patient.phone,
     age: patient.age,
-    bloodType: bloodTypeFromDb[patient.bloodType],
+    bloodType: patient.bloodType ? bloodTypeFromDb[patient.bloodType] ?? null : null,
     xrayImageBase64: patient.xrayImageBase64 ?? patient.xrayImageUrl ?? null,
     balanceDueCents: patient.balanceDueCents ?? 0,
     createdAt: patient.createdAt.toISOString(),
@@ -259,7 +319,13 @@ function mapPatientProfileFromDb(
       id: reservation.id,
       bookingType: bookingTypeFromDb[reservation.bookingType],
       status: reservationStatusFromDb[reservation.status],
-      appointmentDate: reservation.appointmentDate.toISOString().slice(0, 10),
+      appointmentDate: reservation.appointmentDate.toISOString(),
+      endsAt: reservation.endsAt.toISOString(),
+      durationMinutes: Math.max(
+        0,
+        Math.round((reservation.endsAt.getTime() - reservation.appointmentDate.getTime()) / 60_000)
+      ),
+      serviceType: serviceTypeFromDb[reservation.serviceType] ?? "dental",
       hasArrived: reservation.hasArrived,
       createdAt: reservation.createdAt.toISOString(),
       completedAt: reservation.completedAt ? reservation.completedAt.toISOString() : null,
@@ -314,6 +380,8 @@ const getReservationSelect = () => ({
   patientId: true,
   bookingType: true,
   appointmentDate: true,
+  endsAt: true,
+  serviceType: true,
   hasArrived: true,
   status: true,
   createdAt: true,
@@ -502,7 +570,9 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
   }
 
   let appointmentDateTime: Date
+  let endsAt: Date
   let slotId: string | undefined
+  let serviceType: "DENTAL" | "LASER" = "DENTAL"
 
   if (payload.slotId) {
     if (payload.bookingType !== "advance") {
@@ -527,40 +597,142 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
       throw new Error("This time slot is fully booked")
     }
     appointmentDateTime = slot.startsAt
+    endsAt = slot.endsAt
     slotId = slot.id
   } else {
     if (!payload.appointmentDate || Number.isNaN(Date.parse(payload.appointmentDate))) {
-      throw new Error("Invalid appointment date")
+      throw new Error("Invalid appointment start time")
     }
     appointmentDateTime = new Date(payload.appointmentDate)
+    const duration = Number(payload.durationMinutes)
+    if (!(ALLOWED_RESERVATION_DURATIONS as readonly number[]).includes(duration)) {
+      throw new Error("Duration must be 15, 30, 45, 60, 90, or 120 minutes")
+    }
+    if (
+      appointmentDateTime.getUTCMinutes() % 15 !== 0 ||
+      appointmentDateTime.getUTCSeconds() !== 0 ||
+      appointmentDateTime.getUTCMilliseconds() !== 0
+    ) {
+      throw new Error("Start time must use a 15-minute boundary")
+    }
+    serviceType = payload.serviceType ? serviceTypeToDb[payload.serviceType] : "DENTAL"
+    if (!serviceType) {
+      throw new Error("Invalid service type")
+    }
+    endsAt = new Date(appointmentDateTime.getTime() + duration * 60_000)
+    if (clinicDayKey(appointmentDateTime) !== clinicDayKey(endsAt)) {
+      throw new Error("A reservation period must start and end on the same clinic day")
+    }
   }
 
-  let patientId = payload.patientId
+  if (!isWithinClinicHours(appointmentDateTime, endsAt, CLINIC_TIME_ZONE)) {
+    throw new Error(CLINIC_HOURS_MESSAGE)
+  }
 
-  if (!patientId && payload.patient) {
-    const parsedPatient = patientProfilePayloadSchema.safeParse(payload.patient)
-    if (!parsedPatient.success) {
-      throw new Error(parsedPatient.error.issues[0]?.message ?? "Invalid patient data")
-    }
+  const parsedPatient = payload.patient
+    ? patientProfilePayloadSchema.safeParse(payload.patient)
+    : null
+  if (parsedPatient && !parsedPatient.success) {
+    throw new Error(parsedPatient.error.issues[0]?.message ?? "Invalid patient data")
+  }
 
-    const xrayImageBase64 = parsedPatient.data.xrayImageBase64?.trim()
-    const normalizedPhone = normalizePhoneOrThrow(parsedPatient.data.phone)
-    await ensureUniquePhone(normalizedPhone)
+  const createReservation = async () => {
+    return prisma.$transaction(
+      async (tx) => {
+        if (slotId) {
+          const slot = await tx.bookingSlot.findUnique({ where: { id: slotId } })
+          if (!slot || !slot.isActive || slot.endsAt < new Date()) {
+            throw new Error("This time slot is not available")
+          }
+          const taken = await tx.reservation.count({
+            where: {
+              slotId,
+              status: { in: ["UPCOMING", "WAITING", "CURRENT"] },
+            },
+          })
+          if (taken >= slot.capacity) {
+            throw new Error("This time slot is fully booked")
+          }
+        }
 
-    let createdPatient
+        let patientId = payload.patientId
+        if (!patientId && parsedPatient?.success) {
+          const phone = parsedPatient.data.phone
+            ? normalizePhoneOrThrow(parsedPatient.data.phone)
+            : null
+          if (phone) {
+            const duplicate = await tx.patientProfile.findUnique({ where: { phone } })
+            if (duplicate) throw new Error("Phone number already exists")
+          }
+          const xrayImageBase64 = parsedPatient.data.xrayImageBase64?.trim()
+          const created = await tx.patientProfile.create({
+            data: {
+              name: parsedPatient.data.name,
+              phone,
+              age: parsedPatient.data.age ?? null,
+              bloodType: parsedPatient.data.bloodType
+                ? (bloodTypeToDb[parsedPatient.data.bloodType] as never)
+                : null,
+              ...(supportsXrayImageBase64Field && xrayImageBase64
+                ? { xrayImageBase64 }
+                : {}),
+            },
+          })
+          patientId = created.id
+        }
+
+        const existingPatient = patientId
+          ? await tx.patientProfile.findUnique({ where: { id: patientId } })
+          : null
+        if (!existingPatient) {
+          throw new Error("Selected patient was not found")
+        }
+
+        const reservation = await tx.reservation.create({
+          data: {
+            patientId: existingPatient.id,
+            bookingType: bookingType as never,
+            appointmentDate: appointmentDateTime,
+            endsAt,
+            serviceType,
+            hasArrived: Boolean(payload.slotId) ? false : payload.bookingType !== "advance",
+            status: payload.bookingType === "advance" || payload.slotId ? "UPCOMING" : "WAITING",
+            ...(slotId ? { slotId } : {}),
+          },
+        })
+
+        if (payload.reminderId) {
+          const resolved = await tx.patientReminder.updateMany({
+            where: {
+              id: payload.reminderId,
+              patientId: existingPatient.id,
+              status: "PENDING",
+            },
+            data: {
+              status: "BOOKED",
+              reservationId: reservation.id,
+              resolvedAt: new Date(),
+            },
+          })
+          if (resolved.count !== 1) {
+            throw new Error("This reminder is no longer available")
+          }
+        }
+
+        return reservation.id
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      createdPatient = await prisma.patientProfile.create({
-        data: {
-          name: parsedPatient.data.name,
-          phone: normalizedPhone,
-          age: parsedPatient.data.age,
-          bloodType: bloodTypeToDb[parsedPatient.data.bloodType] as never,
-          ...(supportsXrayImageBase64Field && xrayImageBase64
-            ? { xrayImageBase64 }
-            : {}),
-        },
-      })
+      await createReservation()
+      break
     } catch (error) {
+      const retryable =
+        error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034"
+      if (retryable && attempt < 2) continue
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
@@ -569,27 +741,7 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
       }
       throw error
     }
-    patientId = createdPatient.id
   }
-
-  const existingPatient = patientId
-    ? await prisma.patientProfile.findUnique({ where: { id: patientId } })
-    : null
-
-  if (!existingPatient) {
-    throw new Error("Selected patient was not found")
-  }
-
-  await prisma.reservation.create({
-    data: {
-      patientId: existingPatient.id,
-      bookingType: bookingType as never,
-      appointmentDate: appointmentDateTime,
-      hasArrived: Boolean(payload.slotId) ? false : payload.bookingType !== "advance",
-      status: payload.bookingType === "advance" || payload.slotId ? "UPCOMING" : "WAITING",
-      ...(slotId ? { slotId } : {}),
-    },
-  })
 
   return toReservationsData()
 }
@@ -843,6 +995,8 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
               bookingType: true,
               status: true,
               appointmentDate: true,
+              endsAt: true,
+              serviceType: true,
               hasArrived: true,
               createdAt: true,
               completedAt: true,
@@ -854,6 +1008,8 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
               bookingType: true,
               status: true,
               appointmentDate: true,
+              endsAt: true,
+              serviceType: true,
               hasArrived: true,
               createdAt: true,
               completedAt: true,
@@ -888,8 +1044,10 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
   }
 
   const xrayImageBase64 = parsed.data.xrayImageBase64?.trim()
-  const normalizedPhone = normalizePhoneOrThrow(parsed.data.phone)
-  await ensureUniquePhone(normalizedPhone)
+  const normalizedPhone = parsed.data.phone
+    ? normalizePhoneOrThrow(parsed.data.phone)
+    : null
+  if (normalizedPhone) await ensureUniquePhone(normalizedPhone)
 
   let patient
   try {
@@ -897,8 +1055,10 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
       data: {
         name: parsed.data.name,
         phone: normalizedPhone,
-        age: parsed.data.age,
-        bloodType: bloodTypeToDb[parsed.data.bloodType] as never,
+        age: parsed.data.age ?? null,
+        bloodType: parsed.data.bloodType
+          ? (bloodTypeToDb[parsed.data.bloodType] as never)
+          : null,
         ...(supportsXrayImageBase64Field && xrayImageBase64 ? { xrayImageBase64 } : {}),
       },
       include: {
@@ -909,6 +1069,8 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
                 bookingType: true,
                 status: true,
                 appointmentDate: true,
+                endsAt: true,
+                serviceType: true,
                 hasArrived: true,
                 createdAt: true,
                 completedAt: true,
@@ -920,6 +1082,8 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
                 bookingType: true,
                 status: true,
                 appointmentDate: true,
+                endsAt: true,
+                serviceType: true,
                 hasArrived: true,
                 createdAt: true,
                 completedAt: true,
@@ -960,8 +1124,10 @@ export async function updatePatientProfile(
   }
 
   const xrayImageBase64 = parsed.data.xrayImageBase64?.trim()
-  const normalizedPhone = normalizePhoneOrThrow(parsed.data.phone)
-  await ensureUniquePhone(normalizedPhone, patientId)
+  const normalizedPhone = parsed.data.phone
+    ? normalizePhoneOrThrow(parsed.data.phone)
+    : null
+  if (normalizedPhone) await ensureUniquePhone(normalizedPhone, patientId)
 
   let patient
   try {
@@ -972,8 +1138,10 @@ export async function updatePatientProfile(
       data: {
         name: parsed.data.name,
         phone: normalizedPhone,
-        age: parsed.data.age,
-        bloodType: bloodTypeToDb[parsed.data.bloodType] as never,
+        age: parsed.data.age ?? null,
+        bloodType: parsed.data.bloodType
+          ? (bloodTypeToDb[parsed.data.bloodType] as never)
+          : null,
         ...(supportsXrayImageBase64Field
           ? { xrayImageBase64: xrayImageBase64 || null }
           : {}),
@@ -986,6 +1154,8 @@ export async function updatePatientProfile(
                 bookingType: true,
                 status: true,
                 appointmentDate: true,
+                endsAt: true,
+                serviceType: true,
                 hasArrived: true,
                 createdAt: true,
                 completedAt: true,
@@ -997,6 +1167,8 @@ export async function updatePatientProfile(
                 bookingType: true,
                 status: true,
                 appointmentDate: true,
+                endsAt: true,
+                serviceType: true,
                 hasArrived: true,
                 createdAt: true,
                 completedAt: true,

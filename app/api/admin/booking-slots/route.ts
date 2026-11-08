@@ -4,6 +4,10 @@ import { z } from "zod"
 import type { Prisma } from "@prisma/client"
 
 import { requireStaffApi } from "@/lib/api/require-staff"
+import {
+  CLINIC_HOURS_MESSAGE,
+  isWithinClinicHours,
+} from "@/lib/scheduling/clinic-hours"
 import { prisma } from "@/lib/server/db"
 
 export const dynamic = "force-dynamic"
@@ -19,6 +23,7 @@ const postSchema = z.object({
 const MAX_PICKER_SLOTS = 2000
 const MAX_PAGE_SIZE = 100
 const DEFAULT_PAGE_SIZE = 50
+const CLINIC_TIME_ZONE = process.env.CLINIC_TIME_ZONE || "Asia/Damascus"
 
 async function enrichSlots(
   slots: Array<{
@@ -79,7 +84,9 @@ export async function GET(request: Request) {
       orderBy: { startsAt: "asc" },
       take: MAX_PICKER_SLOTS,
     })
-    const enriched = await enrichSlots(slots)
+    const enriched = await enrichSlots(
+      slots.filter((slot) => isWithinClinicHours(slot.startsAt, slot.endsAt, CLINIC_TIME_ZONE))
+    )
     return NextResponse.json({ slots: enriched })
   }
 
@@ -143,6 +150,9 @@ export async function POST(request: Request) {
     const endsAt = new Date(parsed.data.endsAt)
     if (endsAt <= startsAt) {
       return NextResponse.json({ message: "End time must be after start" }, { status: 400 })
+    }
+    if (!isWithinClinicHours(startsAt, endsAt, CLINIC_TIME_ZONE)) {
+      return NextResponse.json({ message: CLINIC_HOURS_MESSAGE }, { status: 400 })
     }
     const now = new Date()
     if (endsAt <= now) {

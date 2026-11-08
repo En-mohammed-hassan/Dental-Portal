@@ -20,6 +20,7 @@ export function AppNavbar() {
   const navItems = useMemo(
     () => [
       { href: "/admin/reservations", label: t("nav.reservations") },
+      { href: "/admin/reminders", label: t("nav.reminders") },
       { href: "/admin/patients", label: t("nav.patients") },
       { href: "/admin/history", label: t("nav.history") },
       { href: "/admin/cms", label: t("nav.cms") },

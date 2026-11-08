@@ -18,7 +18,11 @@ import { PatientBillingPanel } from "@/components/billing/patient-billing-summar
 import { formatDate } from "@/lib/format"
 import { parseLocale } from "@/lib/locale"
 import { useBookingTypeLabels } from "@/lib/i18n/use-admin-labels"
-import { formatAppointmentDate } from "@/utils/patient"
+import {
+  bookingTypeBadgeClass,
+  formatAppointmentDate,
+  reservationStatusBadgeClass,
+} from "@/utils/patient"
 
 interface LinkedReservationsDialogProps {
   patient: PatientProfile | null
@@ -55,22 +59,22 @@ export function LinkedReservationsDialog({
     () => ({
       current: {
         label: t("linkedReservations.statusCurrent"),
-        className: "bg-green-600 text-white border-transparent",
+        className: reservationStatusBadgeClass.current,
         icon: <Clock className="h-3 w-3" />,
       },
       waiting: {
         label: t("linkedReservations.statusWaiting"),
-        className: "bg-amber-500 text-white border-transparent",
+        className: reservationStatusBadgeClass.waiting,
         icon: <Clock className="h-3 w-3" />,
       },
       upcoming: {
         label: t("linkedReservations.statusUpcoming"),
-        className: "bg-blue-600 text-white border-transparent",
+        className: reservationStatusBadgeClass.upcoming,
         icon: <Calendar className="h-3 w-3" />,
       },
       completed: {
         label: t("linkedReservations.statusCompleted"),
-        className: "bg-slate-500 text-white border-transparent",
+        className: reservationStatusBadgeClass.completed,
         icon: <UserCheck className="h-3 w-3" />,
       },
     }),
@@ -81,18 +85,15 @@ export function LinkedReservationsDialog({
     () => ({
       advance: {
         label: bookingTypeLabels.advance,
-        className:
-          "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-300 dark:border-blue-700",
+        className: bookingTypeBadgeClass.advance,
       },
       "walk-in": {
         label: bookingTypeLabels["walk-in"],
-        className:
-          "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-600",
+        className: bookingTypeBadgeClass["walk-in"],
       },
       emergency: {
         label: bookingTypeLabels.emergency,
-        className:
-          "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-300 dark:border-red-700",
+        className: bookingTypeBadgeClass.emergency,
       },
     }),
     [bookingTypeLabels]
@@ -143,7 +144,7 @@ export function LinkedReservationsDialog({
                       reservation.status as keyof typeof reservationStatusConfig
                     ] ?? {
                       label: reservation.status,
-                      className: "bg-slate-500 text-white border-transparent",
+                      className: reservationStatusBadgeClass.completed,
                       icon: null,
                     }
                   const bookingConfig =
@@ -154,7 +155,7 @@ export function LinkedReservationsDialog({
                         bookingTypeLabels[
                           reservation.bookingType as keyof typeof bookingTypeLabels
                         ] ?? reservation.bookingType,
-                      className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+                      className: bookingTypeBadgeClass["walk-in"],
                     }
 
                   return (

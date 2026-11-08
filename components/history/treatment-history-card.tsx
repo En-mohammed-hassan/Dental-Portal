@@ -73,10 +73,10 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-semibold truncate">{record.name}</h3>
-              <p className="text-muted-foreground text-sm truncate">{record.phone}</p>
+              <p className="text-muted-foreground text-sm truncate">{record.phone ?? "—"}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Badge className={bookingTypeBadgeClass[record.bookingType]}>
+              <Badge variant="outline" className={bookingTypeBadgeClass[record.bookingType]}>
                 {bookingTypeLabels[record.bookingType]}
               </Badge>
               <Button
@@ -94,11 +94,11 @@ export function TreatmentHistoryCard({ record, onDeleted }: TreatmentHistoryCard
 
           <div className="grid grid-cols-2 gap-2 text-sm">
             <p>
-              <span className="text-muted-foreground">{t("reservations.age")}:</span> {record.age}
+              <span className="text-muted-foreground">{t("reservations.age")}:</span> {record.age ?? "—"}
             </p>
             <p>
               <span className="text-muted-foreground">{t("reservations.blood")}:</span>{" "}
-              {record.bloodType}
+              {record.bloodType ?? "—"}
             </p>
             <p className="col-span-2">
               <span className="text-muted-foreground">{t("reservations.completed")}:</span>{" "}

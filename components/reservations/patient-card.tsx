@@ -10,7 +10,11 @@ import { PatientBillingPanel } from "@/components/billing/patient-billing-summar
 import { parseLocale } from "@/lib/locale"
 import { cn } from "@/lib/utils"
 import { type Patient } from "@/types/patient"
-import { bookingTypeBadgeClass, formatAppointmentDate } from "@/utils/patient"
+import {
+  bookingTypeBadgeClass,
+  formatAppointmentDate,
+  serviceTypeBadgeClass,
+} from "@/utils/patient"
 
 type CardVariant = "current" | "waiting" | "upcoming"
 type ExtendedCardVariant = CardVariant | "history"
@@ -54,10 +58,13 @@ export function PatientCard({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h3 className="text-base font-semibold">{patient.name}</h3>
-            <p className="text-muted-foreground text-sm">{patient.phone}</p>
+            <p className="text-muted-foreground text-sm">{patient.phone ?? "—"}</p>
           </div>
-          <Badge className={bookingTypeBadgeClass[patient.bookingType]}>
+          <Badge variant="outline" className={bookingTypeBadgeClass[patient.bookingType]}>
             {bookingTypeLabels[patient.bookingType]}
+          </Badge>
+          <Badge variant="outline" className={serviceTypeBadgeClass[patient.serviceType]}>
+            {t(`scheduler.service.${patient.serviceType}`)}
           </Badge>
         </div>
 
@@ -73,15 +80,27 @@ export function PatientCard({
 
         <div className="grid grid-cols-2 gap-2 text-sm">
           <p>
-            <span className="text-muted-foreground">{t("reservations.age")}:</span> {patient.age}
+            <span className="text-muted-foreground">{t("reservations.age")}:</span> {patient.age ?? "—"}
           </p>
           <p>
             <span className="text-muted-foreground">{t("reservations.blood")}:</span>{" "}
-            {patient.bloodType}
+            {patient.bloodType ?? "—"}
           </p>
           <p className="col-span-2">
             <span className="text-muted-foreground">{t("reservations.appointment")}:</span>{" "}
             {formatAppointmentDate(patient.appointmentDate)}
+          </p>
+          <p className="col-span-2 text-muted-foreground">
+            {new Intl.DateTimeFormat(i18n.language, {
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date(patient.appointmentDate))}
+            {" – "}
+            {new Intl.DateTimeFormat(i18n.language, {
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date(patient.endsAt))}
+            {` · ${patient.durationMinutes} ${t("scheduler.minutes")}`}
           </p>
         </div>
 

@@ -106,7 +106,7 @@ export function AdminSlotPicker({
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                 activeDay === key
-                  ? "border-teal-600 bg-teal-600 text-white shadow-sm dark:border-teal-500 dark:bg-teal-600"
+                  ? "border-teal-300 bg-teal-100 text-teal-950 shadow-sm dark:border-teal-800 dark:bg-teal-950/70 dark:text-teal-100"
                   : "border-slate-200 bg-white hover:border-teal-400/80 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-teal-700",
                 dayInPast && activeDay !== key && "opacity-80"
               )}

@@ -176,7 +176,7 @@ export function HistoryPageContent() {
       </section>
 
       <SectionContainer
-        accentClassName="bg-violet-600 text-white"
+        accentClassName="border border-violet-200 bg-violet-100 text-violet-900 dark:border-violet-800 dark:bg-violet-950/70 dark:text-violet-100"
         count={data.total}
         title={t("history.completedTreatments")}
       >

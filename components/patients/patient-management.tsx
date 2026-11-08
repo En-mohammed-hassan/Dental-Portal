@@ -59,13 +59,12 @@ const patientProfileSchema = z.object({
     .trim()
     .min(3, "Name must be at least 3 characters")
     .max(80, "Name is too long"),
-  phone: z
-    .string()
-    .min(4, "Phone is required"),
-  age: z.coerce.number().int().positive("Age must be greater than 0"),
-  bloodType: z.enum(BLOOD_TYPES, {
-    error: "Please select a blood type",
-  }),
+  phone: z.string().trim().optional(),
+  age: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.coerce.number().int().positive("Age must be greater than 0").nullable()
+  ),
+  bloodType: z.enum(BLOOD_TYPES).nullable().optional(),
   xrayImageBase64: z
     .string()
     .trim()
@@ -99,8 +98,8 @@ const readFileAsDataUrl = async (file: File): Promise<string> => {
 const resetFormState = () => ({
   name: "",
   phone: "",
-  age: 0,
-  bloodType: "A+" as const,
+  age: "",
+  bloodType: null,
   xrayImageBase64: "",
 })
 
@@ -191,10 +190,12 @@ export function PatientManagement() {
     const method = editorMode === "edit" ? "PATCH" : "POST"
 
     try {
-      if (!isValidForCountry(phoneCountry, phoneLocal)) {
+      if (phoneLocal.trim() && !isValidForCountry(phoneCountry, phoneLocal)) {
         throw new Error(t("patients.phoneInvalid"))
       }
-      const normalizedPhone = buildE164FromCountryAndLocal(phoneCountry, phoneLocal)
+      const normalizedPhone = phoneLocal.trim()
+        ? buildE164FromCountryAndLocal(phoneCountry, phoneLocal)
+        : null
       const response = await fetch(endpoint, {
         method,
         credentials: "include",
@@ -323,14 +324,19 @@ export function PatientManagement() {
     setErrorMessage(null)
     form.reset({
       name: patient.name,
-      phone: patient.phone,
-      age: patient.age,
-      bloodType: patient.bloodType,
+      phone: patient.phone ?? "",
+      age: patient.age ?? "",
+      bloodType: patient.bloodType ?? null,
       xrayImageBase64: patient.xrayImageBase64 ?? "",
     })
-    const split = splitPhoneToCountryAndLocal(patient.phone, "SY")
-    setPhoneCountry(split.country)
-    setPhoneLocal(split.localNumber)
+    if (patient.phone) {
+      const split = splitPhoneToCountryAndLocal(patient.phone, "SY")
+      setPhoneCountry(split.country)
+      setPhoneLocal(split.localNumber)
+    } else {
+      setPhoneCountry("SY")
+      setPhoneLocal("")
+    }
     setEditorOpen(true)
   }
 
@@ -413,8 +419,9 @@ export function PatientManagement() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{patient.name}</p>
                     <p className="text-muted-foreground text-xs sm:text-sm">
-                      <span className="break-all">{patient.phone}</span> • {patient.age}{" "}
-                      {t("patients.years")} • {patient.bloodType}
+                      <span className="break-all">{patient.phone ?? "—"}</span>
+                      {patient.age != null ? ` • ${patient.age} ${t("patients.years")}` : ""}
+                      {patient.bloodType ? ` • ${patient.bloodType}` : ""}
                       {(patient.balanceDueCents ?? 0) > 0 && (
                         <>
                           {" "}
@@ -517,7 +524,7 @@ export function PatientManagement() {
               {formError.name && <p className="text-sm text-red-600">{formError.name.message}</p>}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-phone">{t("patients.phone")}</Label>
+              <Label htmlFor="patient-phone">{t("patients.phone")} ({t("scheduler.optional")})</Label>
               <PhoneCountryField
                 country={phoneCountry}
                 localNumber={phoneLocal}
@@ -532,7 +539,7 @@ export function PatientManagement() {
               )}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-age">{t("patients.age")}</Label>
+              <Label htmlFor="patient-age">{t("patients.age")} ({t("scheduler.optional")})</Label>
               <Input
                 disabled={isSubmitting}
                 id="patient-age"
@@ -544,20 +551,21 @@ export function PatientManagement() {
               {formError.age && <p className="text-sm text-red-600">{formError.age.message}</p>}
             </div>
             <div className="space-y-1">
-              <Label htmlFor="patient-blood">{t("patients.bloodType")}</Label>
+              <Label htmlFor="patient-blood">{t("patients.bloodType")} ({t("scheduler.optional")})</Label>
               <Controller
                 control={form.control}
                 name="bloodType"
                 render={({ field }) => (
                   <Select
                     disabled={isSubmitting}
-                    value={field.value}
-                    onValueChange={field.onChange}
+                    value={field.value ?? "none"}
+                    onValueChange={(value) => field.onChange(value === "none" ? null : value)}
                   >
                     <SelectTrigger className="w-full" id="patient-blood">
                       <SelectValue placeholder={t("patients.bloodType")} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">—</SelectItem>
                       {BLOOD_TYPES.map((bloodType) => (
                         <SelectItem key={bloodType} value={bloodType}>
                           {bloodType}

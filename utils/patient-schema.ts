@@ -10,11 +10,19 @@ export const patientSchema = z.object({
     .trim()
     .min(3, "Name must be at least 3 characters")
     .max(80, "Name is too long"),
-  phone: z.string().regex(phoneRegex, "Phone must be exactly 10 digits (e.g. 0993198176)"),
-  age: z.coerce.number().int().positive("Age must be greater than 0"),
-  bloodType: z.enum(BLOOD_TYPES, {
-    error: "Please select a blood type",
-  }),
+  phone: z
+    .string()
+    .trim()
+    .refine(
+      (value) => value === "" || phoneRegex.test(value),
+      "Phone must be exactly 10 digits (e.g. 0993198176)"
+    )
+    .optional(),
+  age: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.coerce.number().int().positive("Age must be greater than 0").nullable()
+  ),
+  bloodType: z.enum(BLOOD_TYPES).nullable().optional(),
   bookingType: z.enum(BOOKING_TYPES, {
     error: "Please select a booking type",
   }),

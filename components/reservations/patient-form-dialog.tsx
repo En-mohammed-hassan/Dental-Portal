@@ -155,7 +155,8 @@ export function PatientFormDialog({
     if (!q) return allPatients
     return allPatients.filter((patient) => {
       return (
-        patient.name.toLowerCase().includes(q) || patient.phone.toLowerCase().includes(q)
+        patient.name.toLowerCase().includes(q) ||
+        (patient.phone?.toLowerCase().includes(q) ?? false)
       )
     })
   }, [allPatients, patientSearch])

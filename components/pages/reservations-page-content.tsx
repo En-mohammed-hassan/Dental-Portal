@@ -1,12 +1,13 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { Loader2 } from "lucide-react"
+import { CalendarDays, List, Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { PatientCard } from "@/components/reservations/patient-card"
-import { PatientFormDialog } from "@/components/reservations/patient-form-dialog"
+import { ReservationCalendarView } from "@/components/reservations/reservation-calendar-view"
+import { ReservationSchedulerDialog } from "@/components/reservations/reservation-scheduler-dialog"
 import { SectionContainer } from "@/components/reservations/section-container"
 import { StatsSummary } from "@/components/reservations/stats-summary"
 import {
@@ -58,6 +59,7 @@ export function ReservationsPageContent() {
   } = useReservationsStore()
 
   const [searchTerm, setSearchTerm] = useState("")
+  const [viewMode, setViewMode] = useState<"calendar" | "queue">("calendar")
   const [filterType, setFilterType] = useState<BookingType | "all">("all")
   const [pendingStartPatientId, setPendingStartPatientId] = useState<string | null>(null)
   const [replaceDialogOpen, setReplaceDialogOpen] = useState(false)
@@ -76,12 +78,12 @@ export function ReservationsPageContent() {
     void hydrate()
   }, [hydrate])
 
-  const matchesFilters = (name: string, phone: string, bookingType: BookingType) => {
+  const matchesFilters = (name: string, phone: string | null, bookingType: BookingType) => {
     const normalizedSearch = searchTerm.trim().toLowerCase()
     const matchesSearch =
       !normalizedSearch ||
       name.toLowerCase().includes(normalizedSearch) ||
-      phone.toLowerCase().includes(normalizedSearch)
+      (phone?.toLowerCase().includes(normalizedSearch) ?? false)
     const matchesType = filterType === "all" || bookingType === filterType
     return matchesSearch && matchesType
   }
@@ -105,6 +107,23 @@ export function ReservationsPageContent() {
   const emergencyCount = waitingPatients.filter(
     (patient) => patient.bookingType === "emergency"
   ).length
+
+  const scheduleRevision = useMemo(
+    () =>
+      [
+        ...(currentPatient
+          ? [`current:${currentPatient.id}:${currentPatient.appointmentDate}:${currentPatient.endsAt}`]
+          : []),
+        ...waitingPatients.map(
+          (patient) => `waiting:${patient.id}:${patient.appointmentDate}:${patient.endsAt}`
+        ),
+        ...upcomingPatients.map(
+          (patient) => `upcoming:${patient.id}:${patient.appointmentDate}:${patient.endsAt}`
+        ),
+      ]
+        .join("|"),
+    [currentPatient, upcomingPatients, waitingPatients]
+  )
 
   const startTreatmentFlow = async (patientId: string) => {
     const success = await startTreatment(patientId, true)
@@ -232,7 +251,11 @@ export function ReservationsPageContent() {
             <p className="text-muted-foreground text-sm">{t("reservations.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
-            <PatientFormDialog onSubmitReservation={addReservation} isProcessing={isProcessing} />
+            <ReservationSchedulerDialog
+              onSubmitReservation={addReservation}
+              onCancelReservation={cancelReservation}
+              isProcessing={isProcessing}
+            />
           </div>
         </div>
         {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
@@ -243,123 +266,150 @@ export function ReservationsPageContent() {
         />
       </header>
 
-      <section
-        aria-label="Queue filters"
-        className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200/80 bg-white/60 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 md:grid-cols-2 md:items-end"
-      >
-        <div className="space-y-1.5">
-          <Label className="text-muted-foreground text-xs" htmlFor="queue-search">
-            {t("reservations.search")}
-          </Label>
-          <Input
-            disabled={isLoading || isProcessing}
-            id="queue-search"
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder={t("reservations.searchPlaceholder")}
-            value={searchTerm}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-muted-foreground text-xs" htmlFor="queue-booking-type">
-            {t("reservations.bookingType")}
-          </Label>
-          <BookingTypeFilterSelect
-            disabled={isLoading || isProcessing}
-            id="queue-booking-type"
-            value={filterType}
-            onChange={(v) => setFilterType(v)}
-          />
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <SectionContainer
-          accentClassName="bg-green-600 text-white"
-          count={currentPatient ? 1 : 0}
-          title={t("reservations.currentPatient")}
+      <div className="flex w-full rounded-xl border bg-muted/40 p-1 sm:w-fit">
+        <Button
+          className="flex-1 sm:flex-none"
+          size="sm"
+          variant={viewMode === "calendar" ? "default" : "ghost"}
+          onClick={() => setViewMode("calendar")}
         >
-          <AnimatePresence mode="popLayout">
-            {currentPatient ? (
-              <div key={currentPatient.id} {...listAnimation}>
-                <PatientCard
-                  actionsDisabled={isLoading || isProcessing}
-                  onFinishTreatment={() => setFinishDialogOpen(true)}
-                  patient={currentPatient}
-                  variant="current"
-                />
-              </div>
-            ) : (
-              <motion.p
-                key="no-current"
-                className="text-muted-foreground text-sm"
-                {...listAnimation}
-              >
-                {t("reservations.noCurrent")}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </SectionContainer>
-
-        <SectionContainer
-          accentClassName="bg-amber-500 text-white"
-          count={filteredWaiting.length}
-          title={t("reservations.waitingPatients")}
+          <CalendarDays className="me-2 h-4 w-4" />
+          {t("reservations.calendarView")}
+        </Button>
+        <Button
+          className="flex-1 sm:flex-none"
+          size="sm"
+          variant={viewMode === "queue" ? "default" : "ghost"}
+          onClick={() => setViewMode("queue")}
         >
-          <AnimatePresence mode="popLayout">
-            {filteredWaiting.length ? (
-              filteredWaiting.map((patient) => (
-                <motion.div key={patient.id} layout {...listAnimation}>
-                  <PatientCard
-                    actionsDisabled={isLoading || isProcessing}
-                    onCancel={handleCancel}
-                    onStartTreatment={handleStartTreatment}
-                    patient={patient}
-                    variant="waiting"
-                  />
-                </motion.div>
-              ))
-            ) : (
-              <motion.p
-                key="no-waiting"
-                className="text-muted-foreground text-sm"
-                {...listAnimation}
-              >
-                {t("reservations.noWaiting")}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </SectionContainer>
+          <List className="me-2 h-4 w-4" />
+          {t("reservations.queueView")}
+        </Button>
+      </div>
 
-        <SectionContainer
-          accentClassName="bg-blue-600 text-white"
-          count={filteredUpcoming.length}
-          title={t("reservations.upcomingPatients")}
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredUpcoming.length ? (
-              filteredUpcoming.map((patient) => (
-                <motion.div key={patient.id} layout {...listAnimation}>
-                  <PatientCard
-                    actionsDisabled={isLoading || isProcessing}
-                    onCancel={handleCancel}
-                    onMarkAsArrived={(patientId) => void markAsArrived(patientId)}
-                    patient={patient}
-                    variant="upcoming"
-                  />
-                </motion.div>
-              ))
-            ) : (
-              <motion.p
-                key="no-upcoming"
-                className="text-muted-foreground text-sm"
-                {...listAnimation}
-              >
-                {t("reservations.noUpcoming")}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </SectionContainer>
-      </section>
+      {viewMode === "calendar" ? (
+        <ReservationCalendarView revision={scheduleRevision} />
+      ) : (
+        <>
+          <section
+            aria-label="Queue filters"
+            className="grid grid-cols-1 gap-4 rounded-xl border border-slate-200/80 bg-white/60 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 md:grid-cols-2 md:items-end"
+          >
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground text-xs" htmlFor="queue-search">
+                {t("reservations.search")}
+              </Label>
+              <Input
+                disabled={isLoading || isProcessing}
+                id="queue-search"
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder={t("reservations.searchPlaceholder")}
+                value={searchTerm}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-muted-foreground text-xs" htmlFor="queue-booking-type">
+                {t("reservations.bookingType")}
+              </Label>
+              <BookingTypeFilterSelect
+                disabled={isLoading || isProcessing}
+                id="queue-booking-type"
+                value={filterType}
+                onChange={(v) => setFilterType(v)}
+              />
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+            <SectionContainer
+              accentClassName="border border-green-200 bg-green-100 text-green-900 dark:border-green-800 dark:bg-green-950/70 dark:text-green-100"
+              count={currentPatient ? 1 : 0}
+              title={t("reservations.currentPatient")}
+            >
+              <AnimatePresence mode="popLayout">
+                {currentPatient ? (
+                  <div key={currentPatient.id} {...listAnimation}>
+                    <PatientCard
+                      actionsDisabled={isLoading || isProcessing}
+                      onFinishTreatment={() => setFinishDialogOpen(true)}
+                      patient={currentPatient}
+                      variant="current"
+                    />
+                  </div>
+                ) : (
+                  <motion.p
+                    key="no-current"
+                    className="text-muted-foreground text-sm"
+                    {...listAnimation}
+                  >
+                    {t("reservations.noCurrent")}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </SectionContainer>
+
+            <SectionContainer
+              accentClassName="border border-amber-200 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-100"
+              count={filteredWaiting.length}
+              title={t("reservations.waitingPatients")}
+            >
+              <AnimatePresence mode="popLayout">
+                {filteredWaiting.length ? (
+                  filteredWaiting.map((patient) => (
+                    <motion.div key={patient.id} layout {...listAnimation}>
+                      <PatientCard
+                        actionsDisabled={isLoading || isProcessing}
+                        onCancel={handleCancel}
+                        onStartTreatment={handleStartTreatment}
+                        patient={patient}
+                        variant="waiting"
+                      />
+                    </motion.div>
+                  ))
+                ) : (
+                  <motion.p
+                    key="no-waiting"
+                    className="text-muted-foreground text-sm"
+                    {...listAnimation}
+                  >
+                    {t("reservations.noWaiting")}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </SectionContainer>
+
+            <SectionContainer
+              accentClassName="border border-blue-200 bg-blue-100 text-blue-900 dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-100"
+              count={filteredUpcoming.length}
+              title={t("reservations.upcomingPatients")}
+            >
+              <AnimatePresence mode="popLayout">
+                {filteredUpcoming.length ? (
+                  filteredUpcoming.map((patient) => (
+                    <motion.div key={patient.id} layout {...listAnimation}>
+                      <PatientCard
+                        actionsDisabled={isLoading || isProcessing}
+                        onCancel={handleCancel}
+                        onMarkAsArrived={(patientId) => void markAsArrived(patientId)}
+                        patient={patient}
+                        variant="upcoming"
+                      />
+                    </motion.div>
+                  ))
+                ) : (
+                  <motion.p
+                    key="no-upcoming"
+                    className="text-muted-foreground text-sm"
+                    {...listAnimation}
+                  >
+                    {t("reservations.noUpcoming")}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </SectionContainer>
+          </section>
+        </>
+      )}
 
       <AlertDialog onOpenChange={setReplaceDialogOpen} open={replaceDialogOpen}>
         <AlertDialogContent>

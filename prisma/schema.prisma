@@ -37,6 +37,18 @@ enum PaymentStatus {
   PAID
 }
 
+enum ServiceType {
+  DENTAL
+  LASER
+}
+
+enum ReminderStatus {
+  PENDING
+  BOOKED
+  COMPLETED
+  DISMISSED
+}
+
 enum LedgerEntryType {
   CHARGE
   PAYMENT
@@ -84,9 +96,9 @@ model OtpCode {
 model PatientProfile {
   id              String               @id @default(cuid())
   name            String
-  phone           String               @unique
-  age             Int
-  bloodType       BloodType
+  phone           String?              @unique
+  age             Int?
+  bloodType       BloodType?
   xrayImageBase64 String?
   /// Running amount the patient still owes (smallest currency unit, e.g. cents)
   balanceDueCents Int                  @default(0)
@@ -95,6 +107,7 @@ model PatientProfile {
   reservations    Reservation[]
   ledgerEntries   PatientLedgerEntry[]
   user            User?
+  reminders       PatientReminder[]
 
   @@index([name])
 }
@@ -113,126 +126,147 @@ model BookingSlot {
 }
 
 model Reservation {
-  id               String            @id @default(cuid())
-  patientId        String
-  bookingType      BookingType
-  appointmentDate  DateTime
-  hasArrived       Boolean           @default(false)
-  status           ReservationStatus
-  completedAt      DateTime?
-  treatmentNote    String?
-  xrayImageBase64  String?
-  slotId           String?
+  id                String               @id @default(cuid())
+  patientId         String
+  bookingType       BookingType
+  appointmentDate   DateTime
+  endsAt            DateTime
+  serviceType       ServiceType          @default(DENTAL)
+  hasArrived        Boolean              @default(false)
+  status            ReservationStatus
+  completedAt       DateTime?
+  treatmentNote     String?
+  xrayImageBase64   String?
+  slotId            String?
   /// Fee in smallest currency unit (e.g. cents); optional charting field for completed visits
-  feeCents         Int?
+  feeCents          Int?
   /// Treatment charge added to patient balance this session
-  chargeCents      Int?
+  chargeCents       Int?
   /// Payment received from patient this session (reduces balance)
-  paymentCents     Int?
+  paymentCents      Int?
   /// Patient balance after this session was completed
   balanceAfterCents Int?
-  paymentStatus    PaymentStatus?
+  paymentStatus     PaymentStatus?
   /// Endodontic / RCT: number of canals treated (0–8)
-  canalsCount      Int?
+  canalsCount       Int?
   /// FDI tooth numbers as JSON string array, e.g. ["16","21"]
-  teethTreated     Json?
+  teethTreated      Json?
   /// Short procedure label, e.g. "RCT", "Composite filling"
-  procedureSummary String?
-  createdAt        DateTime          @default(now())
-  patient          PatientProfile       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  slot             BookingSlot?         @relation(fields: [slotId], references: [id], onDelete: SetNull)
-  ledgerEntries    PatientLedgerEntry[]
+  procedureSummary  String?
+  createdAt         DateTime             @default(now())
+  patient           PatientProfile       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  slot              BookingSlot?         @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  ledgerEntries     PatientLedgerEntry[]
+  reminder          PatientReminder?
 
   @@index([status])
   @@index([appointmentDate])
+  @@index([status, appointmentDate])
+  @@index([endsAt])
   @@index([bookingType])
   @@index([patientId])
   @@index([slotId])
   @@index([completedAt])
 }
 
+model PatientReminder {
+  id            String         @id @default(cuid())
+  patientId     String
+  dueOn         DateTime       @db.Date
+  status        ReminderStatus @default(PENDING)
+  note          String?
+  reservationId String?        @unique
+  createdAt     DateTime       @default(now())
+  resolvedAt    DateTime?
+  patient       PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  reservation   Reservation?   @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+
+  @@index([dueOn, status])
+  @@index([patientId])
+}
+
 model PatientLedgerEntry {
-  id                String           @id @default(cuid())
+  id                String          @id @default(cuid())
   patientId         String
   reservationId     String?
   type              LedgerEntryType
   amountCents       Int
   balanceAfterCents Int
   note              String?
-  createdAt         DateTime         @default(now())
-  patient           PatientProfile   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  reservation       Reservation?     @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
+  patient           PatientProfile  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  reservation       Reservation?    @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
   @@index([patientId, createdAt])
   @@index([reservationId])
 }
 
 model SiteSettings {
-  id            String  @id @default("default")
-  clinicName    String  @default("Elkood Dental")
-  clinicNameAr  String?
-  heroTitle     String  @default("Smile with confidence")
-  heroTitleAr   String?
-  heroSubtitle  String  @default("Modern dentistry, gentle care.")
-  heroSubtitleAr String?
-  heroImageBase64 String? @db.Text @map("heroImageUrl")
-  aboutMarkdown String? @db.Text
-  aboutMarkdownAr String? @db.Text
-  contactPhone  String?
-  contactEmail  String?
-  facebookUrl   String?
-  instagramUrl  String?
-  address       String?
-  addressAr     String?
-  footerNote    String?
-  footerNoteAr  String?
+  id               String   @id @default("default")
+  clinicName       String   @default("Elkood Dental")
+  clinicNameAr     String?
+  heroTitle        String   @default("Smile with confidence")
+  heroTitleAr      String?
+  heroSubtitle     String   @default("Modern dentistry, gentle care.")
+  heroSubtitleAr   String?
+  heroImageBase64  String?  @map("heroImageUrl") @db.Text
+  aboutMarkdown    String?  @db.Text
+  aboutMarkdownAr  String?  @db.Text
+  contactPhone     String?
+  contactEmail     String?
+  facebookUrl      String?
+  instagramUrl     String?
+  address          String?
+  addressAr        String?
+  footerNote       String?
+  footerNoteAr     String?
   /// White-label copy: { en: {...}, ar: {...} }
-  marketingContent Json? @default("{}")
-  updatedAt     DateTime @updatedAt
+  marketingContent Json?    @default("{}")
+  updatedAt        DateTime @updatedAt
 }
 
 model ServiceItem {
-  id          String   @id @default(cuid())
-  title       String
-  titleAr     String?
-  description String   @db.Text
-  descriptionAr String? @db.Text
-  priceLabel  String?
-  priceLabelAr String?
-  imageBase64 String? @db.Text @map("imageUrl")
-  sortOrder   Int      @default(0)
-  published   Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  title         String
+  titleAr       String?
+  description   String   @db.Text
+  descriptionAr String?  @db.Text
+  priceLabel    String?
+  priceLabelAr  String?
+  imageBase64   String?  @map("imageUrl") @db.Text
+  sortOrder     Int      @default(0)
+  published     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([published, sortOrder])
 }
 
 model BlogPost {
-  id          String    @id @default(cuid())
-  slug        String    @unique
-  title       String
-  titleAr     String?
-  excerpt     String?
-  excerptAr   String?
-  content     String    @db.Text
-  contentAr   String?   @db.Text
-  coverImageBase64 String? @db.Text @map("coverUrl")
-  published   Boolean   @default(false)
-  publishedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  slug             String    @unique
+  title            String
+  titleAr          String?
+  excerpt          String?
+  excerptAr        String?
+  content          String    @db.Text
+  contentAr        String?   @db.Text
+  coverImageBase64 String?   @map("coverUrl") @db.Text
+  published        Boolean   @default(false)
+  publishedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([published, publishedAt])
 }
 
 model GalleryImage {
-  id        String   @id @default(cuid())
-  imageBase64 String @db.Text @map("imageUrl")
-  caption   String?
-  captionAr String?
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  imageBase64 String   @map("imageUrl") @db.Text
+  caption     String?
+  captionAr   String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
 
   @@index([sortOrder])
 }

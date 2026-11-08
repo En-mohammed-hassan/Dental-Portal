@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 
+import { isWithinClinicHours } from "@/lib/scheduling/clinic-hours"
 import { prisma } from "@/lib/server/db"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
 const MAX_SLOTS = 800
+const CLINIC_TIME_ZONE = process.env.CLINIC_TIME_ZONE || "Asia/Damascus"
 
 /**
  * Every **active** slot whose **end** is still in the future (server time).
@@ -63,7 +65,9 @@ export async function GET(request: Request) {
   })
 
   const result = await Promise.all(
-    slots.map(async (s) => {
+    slots
+      .filter((slot) => isWithinClinicHours(slot.startsAt, slot.endsAt, CLINIC_TIME_ZONE))
+      .map(async (s) => {
       const taken = await prisma.reservation.count({
         where: {
           slotId: s.id,
@@ -79,7 +83,7 @@ export async function GET(request: Request) {
         capacity: s.capacity,
         remaining,
       }
-    })
+      })
   )
 
   return NextResponse.json(

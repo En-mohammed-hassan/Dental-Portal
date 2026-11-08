@@ -14,6 +14,11 @@ export const BLOOD_TYPES = [
 export type BookingType = (typeof BOOKING_TYPES)[number]
 export type BloodType = (typeof BLOOD_TYPES)[number]
 export type ReservationStatus = "current" | "waiting" | "upcoming" | "completed"
+export const SERVICE_TYPES = ["dental", "laser"] as const
+export const ALLOWED_RESERVATION_DURATIONS = [15, 30, 45, 60, 90, 120] as const
+
+export type ServiceType = (typeof SERVICE_TYPES)[number]
+export type ReservationDuration = (typeof ALLOWED_RESERVATION_DURATIONS)[number]
 
 export type PaymentStatusLabel = "unpaid" | "partial" | "paid"
 
@@ -21,11 +26,14 @@ export interface Patient {
   id: string
   patientId: string
   name: string
-  phone: string
-  age: number
-  bloodType: BloodType
+  phone: string | null
+  age: number | null
+  bloodType: BloodType | null
   bookingType: BookingType
   appointmentDate: string
+  endsAt: string
+  durationMinutes: number
+  serviceType: ServiceType
   hasArrived: boolean
   createdAt: string
   completedAt?: string | null
@@ -67,9 +75,9 @@ export interface FinishTreatmentInput {
 
 export interface NewPatientInput {
   name: string
-  phone: string
-  age: number
-  bloodType: BloodType
+  phone?: string | null
+  age?: number | null
+  bloodType?: BloodType | null
   xrayImageBase64?: string | null
 }
 
@@ -82,6 +90,11 @@ export interface NewReservationInput {
    * Omitted when `slotId` is set — server uses the slot start time.
    */
   appointmentDate?: string
+  /** One of the supported fixed periods. Required for direct admin scheduling. */
+  durationMinutes?: ReservationDuration
+  serviceType?: ServiceType
+  /** When booking from the reminders view, the reminder is resolved atomically. */
+  reminderId?: string
   /** Advance bookings from /book or admin: ties the reservation to a slot (same rules as patient booking). */
   slotId?: string
 }
@@ -89,9 +102,9 @@ export interface NewReservationInput {
 export interface PatientProfile {
   id: string
   name: string
-  phone: string
-  age: number
-  bloodType: BloodType
+  phone: string | null
+  age: number | null
+  bloodType: BloodType | null
   xrayImageBase64?: string | null
   balanceDueCents?: number
   totalChargedCents?: number
@@ -102,6 +115,9 @@ export interface PatientProfile {
     bookingType: BookingType
     status: ReservationStatus
     appointmentDate: string
+    endsAt: string
+    durationMinutes: number
+    serviceType: ServiceType
     hasArrived: boolean
     createdAt: string
     completedAt?: string | null
