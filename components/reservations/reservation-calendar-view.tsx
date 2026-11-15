@@ -12,9 +12,8 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Loader2,
-  Phone,
+  Plus,
   RefreshCw,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
@@ -22,7 +21,6 @@ import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useBookingTypeLabels } from "@/lib/i18n/use-admin-labels"
 import { cn } from "@/lib/utils"
 import {
   type BookingType,
@@ -30,8 +28,6 @@ import {
   type ServiceType,
 } from "@/types/patient"
 import {
-  bookingTypeBadgeClass,
-  reservationStatusBadgeClass,
   serviceTypeBadgeClass,
 } from "@/utils/patient"
 
@@ -45,6 +41,7 @@ type DayAppointment = {
   startsAt: string
   endsAt: string
   durationMinutes: number
+  note?: string | null
   serviceType: ServiceType
 }
 
@@ -55,6 +52,7 @@ type MonthCount = {
 
 type Props = {
   revision?: string
+  onAddReservation?: (day: Date) => void
 }
 
 function dateKey(date: Date): string {
@@ -73,9 +71,8 @@ function timeLabel(date: Date, locale: string): string {
   }).format(date)
 }
 
-export function ReservationCalendarView({ revision = "" }: Props) {
+export function ReservationCalendarView({ revision = "", onAddReservation }: Props) {
   const { t, i18n } = useTranslation(["admin", "common"])
-  const bookingTypeLabels = useBookingTypeLabels()
   const locale = i18n.language || "en"
   const today = useMemo(() => new Date(), [])
   const todayKey = dateKey(today)
@@ -174,6 +171,13 @@ export function ReservationCalendarView({ revision = "" }: Props) {
     setMonth(startOfMonth(value))
     setSelectedDay(value)
   }
+
+  const selectedDayHasFutureTime =
+    new Date(
+      selectedDay.getFullYear(),
+      selectedDay.getMonth(),
+      selectedDay.getDate() + 1
+    ).getTime() > Date.now()
 
   return (
     <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -304,8 +308,8 @@ export function ReservationCalendarView({ revision = "" }: Props) {
           </div>
         </div>
 
-        <div className="min-h-[28rem] bg-muted/20 p-3 sm:p-5">
-          <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0 bg-muted/20 p-3 sm:p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t("reservations.dayAgenda")}
@@ -318,17 +322,30 @@ export function ReservationCalendarView({ revision = "" }: Props) {
                 }).format(selectedDay)}
               </h3>
             </div>
-            <Badge
-              variant="outline"
-              className={cn(
-                "border px-2.5 py-1 font-semibold",
-                appointments.length > 0
-                  ? "border-violet-200 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950/70 dark:text-violet-200"
-                  : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-              )}
-            >
-              {t("reservations.dayCount", { count: appointments.length })}
-            </Badge>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "border px-2 py-0.5 text-[11px] font-semibold",
+                  appointments.length > 0
+                    ? "border-violet-200 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950/70 dark:text-violet-200"
+                    : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                )}
+              >
+                {t("reservations.dayCount", { count: appointments.length })}
+              </Badge>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 px-2.5 text-xs"
+                disabled={!selectedDayHasFutureTime}
+                onClick={() => onAddReservation?.(selectedDay)}
+                title={!selectedDayHasFutureTime ? t("reservations.pastDayCannotAdd") : undefined}
+              >
+                <Plus className="me-1 h-3.5 w-3.5" />
+                {t("reservationForm.addReservation")}
+              </Button>
+            </div>
           </div>
 
           {dayError ? (
@@ -336,11 +353,11 @@ export function ReservationCalendarView({ revision = "" }: Props) {
               {dayError}
             </p>
           ) : dayLoading ? (
-            <div className="flex min-h-64 items-center justify-center">
+            <div className="flex min-h-48 items-center justify-center">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : appointments.length === 0 ? (
-            <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed bg-background/60 px-6 text-center">
+            <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed bg-background/60 px-4 text-center">
               <CalendarDays className="mb-3 h-9 w-9 text-muted-foreground" />
               <p className="font-medium">{t("scheduler.noReservations")}</p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -348,55 +365,45 @@ export function ReservationCalendarView({ revision = "" }: Props) {
               </p>
             </div>
           ) : (
-            <div className="max-h-[32rem] space-y-2 overflow-y-auto pe-1">
+            <div className="grid max-h-[24rem] grid-cols-2 gap-1.5 overflow-y-auto pe-1">
               {appointments.map((appointment) => {
                 const start = new Date(appointment.startsAt)
-                const end = new Date(appointment.endsAt)
                 return (
                   <article
                     key={appointment.id}
-                    className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 rounded-xl border bg-background p-3 shadow-sm"
+                    className="min-w-0 overflow-hidden rounded-md border bg-background p-1.5 shadow-sm"
+                    title={appointment.note || undefined}
                   >
-                    <div className="border-e pe-3 text-center">
-                      <p className="font-semibold tabular-nums">{timeLabel(start, locale)}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                        {timeLabel(end, locale)}
+                    <div className="flex min-w-0 items-center justify-between gap-1">
+                      <p className="truncate text-xs font-bold tabular-nums">
+                        {timeLabel(start, locale)}
                       </p>
-                      <div className="mt-2 flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
-                        <Clock3 className="h-3 w-3" />
-                        {appointment.durationMinutes} {t("scheduler.min")}
-                      </div>
+                      {appointment.durationMinutes > 0 && (
+                        <span className="shrink-0 text-[9px] text-muted-foreground">
+                          {appointment.durationMinutes} {t("scheduler.min")}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold">{appointment.patientName}</p>
-                          {appointment.patientPhone && (
-                            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground" dir="ltr">
-                              <Phone className="h-3 w-3" />
-                              {appointment.patientPhone}
-                            </p>
-                          )}
-                        </div>
-                        <Badge className={reservationStatusBadgeClass[appointment.status]} variant="outline">
-                          {t(`linkedReservations.status${appointment.status.charAt(0).toUpperCase()}${appointment.status.slice(1)}`)}
-                        </Badge>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        <Badge
-                          variant="outline"
-                          className={serviceTypeBadgeClass[appointment.serviceType]}
-                        >
-                          {t(`scheduler.service.${appointment.serviceType}`)}
-                        </Badge>
-                        <Badge
-                          variant="outline"
-                          className={bookingTypeBadgeClass[appointment.bookingType]}
-                        >
-                          {bookingTypeLabels[appointment.bookingType]}
-                        </Badge>
-                      </div>
+                    <div className="mt-1 flex min-w-0 items-center justify-between gap-1 border-t pt-1">
+                      <p className="min-w-0 truncate text-xs font-semibold">
+                        <span>{appointment.patientName}</span>
+                        {appointment.patientPhone && (
+                          <>
+                            <span> - </span>
+                            <span dir="ltr">{appointment.patientPhone}</span>
+                          </>
+                        )}
+                      </p>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "shrink-0 px-1 py-0 text-[8px]",
+                          serviceTypeBadgeClass[appointment.serviceType]
+                        )}
+                      >
+                        {t(`scheduler.service.${appointment.serviceType}`)}
+                      </Badge>
                     </div>
                   </article>
                 )

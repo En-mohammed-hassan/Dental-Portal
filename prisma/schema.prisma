@@ -97,6 +97,7 @@ model PatientProfile {
   id              String               @id @default(cuid())
   name            String
   phone           String?              @unique
+  documentNumber  String?
   age             Int?
   bloodType       BloodType?
   xrayImageBase64 String?
@@ -135,6 +136,7 @@ model Reservation {
   hasArrived        Boolean              @default(false)
   status            ReservationStatus
   completedAt       DateTime?
+  note              String?
   treatmentNote     String?
   xrayImageBase64   String?
   slotId            String?

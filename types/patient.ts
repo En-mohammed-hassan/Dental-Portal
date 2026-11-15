@@ -27,6 +27,7 @@ export interface Patient {
   patientId: string
   name: string
   phone: string | null
+  documentNumber?: string | null
   age: number | null
   bloodType: BloodType | null
   bookingType: BookingType
@@ -37,6 +38,7 @@ export interface Patient {
   hasArrived: boolean
   createdAt: string
   completedAt?: string | null
+  note?: string | null
   treatmentNote?: string | null
   xrayImageBase64?: string | null
   /** Stored in cents (integer) — legacy; prefer chargeCents */
@@ -76,6 +78,7 @@ export interface FinishTreatmentInput {
 export interface NewPatientInput {
   name: string
   phone?: string | null
+  documentNumber?: string | null
   age?: number | null
   bloodType?: BloodType | null
   xrayImageBase64?: string | null
@@ -90,8 +93,10 @@ export interface NewReservationInput {
    * Omitted when `slotId` is set — server uses the slot start time.
    */
   appointmentDate?: string
-  /** One of the supported fixed periods. Required for direct admin scheduling. */
-  durationMinutes?: ReservationDuration
+  /** Optional treatment period in minutes for direct admin scheduling. */
+  durationMinutes?: number
+  /** Optional booking note; separate from the clinical treatment note. */
+  note?: string | null
   serviceType?: ServiceType
   /** When booking from the reminders view, the reminder is resolved atomically. */
   reminderId?: string
@@ -103,6 +108,7 @@ export interface PatientProfile {
   id: string
   name: string
   phone: string | null
+  documentNumber?: string | null
   age: number | null
   bloodType: BloodType | null
   xrayImageBase64?: string | null
@@ -121,6 +127,7 @@ export interface PatientProfile {
     hasArrived: boolean
     createdAt: string
     completedAt?: string | null
+    note?: string | null
     treatmentNote?: string | null
     xrayImageBase64?: string | null
   }>

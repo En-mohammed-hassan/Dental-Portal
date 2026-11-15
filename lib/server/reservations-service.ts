@@ -12,7 +12,6 @@ import {
   type BookingType as AppBookingType,
   type ReservationStatus as AppReservationStatus,
   type ServiceType as AppServiceType,
-  ALLOWED_RESERVATION_DURATIONS,
 } from "@/types/patient"
 import { type ReservationsData } from "@/types/reservations"
 import { sortByAppointmentDate } from "@/utils/patient"
@@ -24,7 +23,7 @@ import {
   mergeBillingIntoProfile,
   type PatientBillingSummary,
 } from "@/lib/server/patient-billing-summary"
-import { buildProfilePhoneCandidates, normalizeToE164 } from "@/lib/phone"
+import { buildProfilePhoneCandidates } from "@/lib/phone"
 import {
   CLINIC_HOURS_MESSAGE,
   isWithinClinicHours,
@@ -143,21 +142,6 @@ const serviceTypeFromDb: Record<string, AppServiceType> = {
 
 const CLINIC_TIME_ZONE = process.env.CLINIC_TIME_ZONE || "Asia/Damascus"
 
-const clinicDayFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: CLINIC_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-})
-
-function clinicDayKey(date: Date): string {
-  const parts = clinicDayFormatter.formatToParts(date)
-  const year = parts.find((part) => part.type === "year")?.value
-  const month = parts.find((part) => part.type === "month")?.value
-  const day = parts.find((part) => part.type === "day")?.value
-  return `${year}-${month}-${day}`
-}
-
 const reservationStatusFromDb: Record<string, AppReservationStatus> = {
   CURRENT: "current",
   WAITING: "waiting",
@@ -181,7 +165,12 @@ const paymentStatusFromDb: Record<string, AppPaymentStatus> = {
 
 const optionalPhoneSchema = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? null : value),
-  z.string().trim().min(4, "Phone number is too short").nullable().optional()
+  z
+    .string()
+    .trim()
+    .regex(/^0\d{9}$/, "Phone must be exactly 10 digits and start with 0")
+    .nullable()
+    .optional()
 )
 
 const optionalAgeSchema = z.preprocess(
@@ -197,6 +186,10 @@ const optionalBloodTypeSchema = z.preprocess(
 const patientProfilePayloadSchema = z.object({
   name: z.string().trim().min(3).max(80),
   phone: optionalPhoneSchema,
+  documentNumber: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.string().trim().max(50, "Document number is too long").nullable().optional()
+  ),
   age: optionalAgeSchema,
   bloodType: optionalBloodTypeSchema,
   xrayImageBase64: z
@@ -220,6 +213,7 @@ function mapReservationFromDb(patient: {
   hasArrived: boolean
   createdAt: Date
   completedAt?: Date | null
+  note?: string | null
   treatmentNote?: string | null
   xrayImageBase64?: string | null
   feeCents?: number | null
@@ -233,6 +227,7 @@ function mapReservationFromDb(patient: {
   patient: {
     name: string
     phone: string | null
+    documentNumber?: string | null
     age: number | null
     bloodType: string | null
     xrayImageBase64?: string | null
@@ -247,6 +242,7 @@ function mapReservationFromDb(patient: {
     patientId: patient.patientId,
     name: patient.patient.name,
     phone: patient.patient.phone,
+    documentNumber: patient.patient.documentNumber ?? null,
     age: patient.patient.age,
     bloodType: patient.patient.bloodType
       ? bloodTypeFromDb[patient.patient.bloodType] ?? null
@@ -262,6 +258,7 @@ function mapReservationFromDb(patient: {
     hasArrived: patient.hasArrived,
     createdAt: patient.createdAt.toISOString(),
     completedAt: patient.completedAt ? patient.completedAt.toISOString() : null,
+    note: patient.note ?? null,
     treatmentNote: patient.treatmentNote ?? null,
     xrayImageBase64: patient.xrayImageBase64 ?? null,
     feeCents: patient.feeCents ?? patient.chargeCents ?? null,
@@ -283,6 +280,7 @@ function mapPatientProfileFromDb(
   id: string
   name: string
   phone: string | null
+  documentNumber?: string | null
   age: number | null
   bloodType: string | null
   xrayImageBase64?: string | null
@@ -299,6 +297,7 @@ function mapPatientProfileFromDb(
     hasArrived: boolean
     createdAt: Date
     completedAt?: Date | null
+    note?: string | null
     treatmentNote?: string | null
     xrayImageBase64?: string | null
   }>
@@ -310,6 +309,7 @@ function mapPatientProfileFromDb(
     id: patient.id,
     name: patient.name,
     phone: patient.phone,
+    documentNumber: patient.documentNumber ?? null,
     age: patient.age,
     bloodType: patient.bloodType ? bloodTypeFromDb[patient.bloodType] ?? null : null,
     xrayImageBase64: patient.xrayImageBase64 ?? patient.xrayImageUrl ?? null,
@@ -329,6 +329,7 @@ function mapPatientProfileFromDb(
       hasArrived: reservation.hasArrived,
       createdAt: reservation.createdAt.toISOString(),
       completedAt: reservation.completedAt ? reservation.completedAt.toISOString() : null,
+      note: reservation.note ?? null,
       treatmentNote: reservation.treatmentNote ?? null,
       xrayImageBase64: reservation.xrayImageBase64 ?? null,
     })),
@@ -339,13 +340,9 @@ function mapPatientProfileFromDb(
 
 async function ensureUniquePhone(phone: string, excludePatientId?: string): Promise<void> {
   const candidates = buildProfilePhoneCandidates(phone, "SY")
-  const normalized = normalizeToE164(phone, "SY")
-  if (!normalized) {
-    throw new Error("Invalid phone number format")
-  }
   const existing = await prisma.patientProfile.findFirst({
     where: {
-      phone: { in: [...new Set([normalized, ...candidates])] },
+      phone: { in: [...new Set([phone, ...candidates])] },
       ...(excludePatientId ? { id: { not: excludePatientId } } : {}),
     },
     select: { id: true },
@@ -357,17 +354,18 @@ async function ensureUniquePhone(phone: string, excludePatientId?: string): Prom
 }
 
 function normalizePhoneOrThrow(phone: string): string {
-  const normalized = normalizeToE164(phone, "SY")
-  if (!normalized) {
-    throw new Error("Invalid phone number format")
+  const localPhone = phone.trim()
+  if (!/^0\d{9}$/.test(localPhone)) {
+    throw new Error("Phone must be exactly 10 digits and start with 0")
   }
-  return normalized
+  return localPhone
 }
 
 // Helper to build patient select object
 const getPatientSelect = () => ({
   name: true,
   phone: true,
+  documentNumber: true,
   age: true,
   bloodType: true,
   ...(supportsBalanceDueCents ? { balanceDueCents: true } : {}),
@@ -386,6 +384,7 @@ const getReservationSelect = () => ({
   status: true,
   createdAt: true,
   completedAt: true,
+  note: true,
   treatmentNote: true,
   feeCents: true,
   ...(supportsChargeCents ? { chargeCents: true } : {}),
@@ -604,28 +603,21 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
       throw new Error("Invalid appointment start time")
     }
     appointmentDateTime = new Date(payload.appointmentDate)
-    const duration = Number(payload.durationMinutes)
-    if (!(ALLOWED_RESERVATION_DURATIONS as readonly number[]).includes(duration)) {
-      throw new Error("Duration must be 15, 30, 45, 60, 90, or 120 minutes")
+    const duration = payload.durationMinutes == null ? 0 : Number(payload.durationMinutes)
+    if (!Number.isInteger(duration) || duration < 0 || duration > 1440) {
+      throw new Error("Duration must be a whole number between 1 and 1440 minutes")
     }
-    if (
-      appointmentDateTime.getUTCMinutes() % 15 !== 0 ||
-      appointmentDateTime.getUTCSeconds() !== 0 ||
-      appointmentDateTime.getUTCMilliseconds() !== 0
-    ) {
-      throw new Error("Start time must use a 15-minute boundary")
+    if (appointmentDateTime.getTime() <= Date.now()) {
+      throw new Error("Choose a future start time")
     }
     serviceType = payload.serviceType ? serviceTypeToDb[payload.serviceType] : "DENTAL"
     if (!serviceType) {
       throw new Error("Invalid service type")
     }
     endsAt = new Date(appointmentDateTime.getTime() + duration * 60_000)
-    if (clinicDayKey(appointmentDateTime) !== clinicDayKey(endsAt)) {
-      throw new Error("A reservation period must start and end on the same clinic day")
-    }
   }
 
-  if (!isWithinClinicHours(appointmentDateTime, endsAt, CLINIC_TIME_ZONE)) {
+  if (slotId && !isWithinClinicHours(appointmentDateTime, endsAt, CLINIC_TIME_ZONE)) {
     throw new Error(CLINIC_HOURS_MESSAGE)
   }
 
@@ -634,6 +626,10 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
     : null
   if (parsedPatient && !parsedPatient.success) {
     throw new Error(parsedPatient.error.issues[0]?.message ?? "Invalid patient data")
+  }
+  const reservationNote = payload.note?.trim() || null
+  if (reservationNote && reservationNote.length > 500) {
+    throw new Error("Reservation note must be 500 characters or fewer")
   }
 
   const createReservation = async () => {
@@ -669,6 +665,7 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
             data: {
               name: parsedPatient.data.name,
               phone,
+              documentNumber: parsedPatient.data.documentNumber ?? null,
               age: parsedPatient.data.age ?? null,
               bloodType: parsedPatient.data.bloodType
                 ? (bloodTypeToDb[parsedPatient.data.bloodType] as never)
@@ -694,6 +691,7 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
             bookingType: bookingType as never,
             appointmentDate: appointmentDateTime,
             endsAt,
+            note: reservationNote,
             serviceType,
             hasArrived: Boolean(payload.slotId) ? false : payload.bookingType !== "advance",
             status: payload.bookingType === "advance" || payload.slotId ? "UPCOMING" : "WAITING",
@@ -982,6 +980,7 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
           OR: [
             { name: { contains: normalized, mode: "insensitive" } },
             { phone: { contains: normalized } },
+            { documentNumber: { contains: normalized, mode: "insensitive" } },
           ],
         }
       : undefined,
@@ -1055,6 +1054,7 @@ export async function createPatientProfile(payload: NewPatientInput): Promise<Pa
       data: {
         name: parsed.data.name,
         phone: normalizedPhone,
+        documentNumber: parsed.data.documentNumber ?? null,
         age: parsed.data.age ?? null,
         bloodType: parsed.data.bloodType
           ? (bloodTypeToDb[parsed.data.bloodType] as never)
@@ -1138,6 +1138,7 @@ export async function updatePatientProfile(
       data: {
         name: parsed.data.name,
         phone: normalizedPhone,
+        documentNumber: parsed.data.documentNumber ?? null,
         age: parsed.data.age ?? null,
         bloodType: parsed.data.bloodType
           ? (bloodTypeToDb[parsed.data.bloodType] as never)

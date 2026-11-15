@@ -46,15 +46,22 @@ export async function POST(request: Request) {
 
     const [adminPhone, profile] = await Promise.all([
       findAdminPhoneExact(phoneKey),
-      prisma.patientProfile.findUnique({ where: { phone: phoneKey } }),
+      prisma.patientProfile.findFirst({ where: { phone: { in: candidates } } }),
     ])
 
     if (!adminPhone && !profile) {
       return NextResponse.json({ message: "Account not found for this number" }, { status: 404 })
     }
 
-    let user = await prisma.user.findUnique({
-      where: { phone: phoneKey },
+    let user = await prisma.user.findFirst({
+      where: adminPhone
+        ? { phone: phoneKey }
+        : {
+            OR: [
+              ...(profile ? [{ patientProfileId: profile.id }] : []),
+              { phone: { in: candidates } },
+            ],
+          },
       select: {
         id: true,
         phone: true,
@@ -99,9 +106,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: "Patient profile not found" }, { status: 404 })
       }
       if (!user) {
+        const accountPhone = candidates.find((candidate) => candidate.startsWith("+")) ?? phoneKey
         user = await prisma.user.create({
           data: {
-            phone: phoneKey,
+            phone: accountPhone,
             name: profile.name,
             role: UserRole.PATIENT,
             patientProfileId: profile.id,

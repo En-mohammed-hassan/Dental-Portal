@@ -52,6 +52,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Invalid phone number format" }, { status: 400 })
     }
     const candidates = buildProfilePhoneCandidates(phone, "SY")
+    const localProfilePhone = candidates.find((candidate) => /^0\d{9}$/.test(candidate))
+    if (!localProfilePhone) {
+      return NextResponse.json(
+        { message: "Phone must be a 10-digit Syrian local number" },
+        { status: 400 }
+      )
+    }
 
     const existingProfile = await prisma.patientProfile.findFirst({ where: { phone: { in: candidates } } })
     if (existingProfile) {
@@ -76,7 +83,7 @@ export async function POST(request: Request) {
       const profile = await tx.patientProfile.create({
         data: {
           name,
-          phone: normalizedPhone,
+          phone: localProfilePhone,
           age,
           bloodType: bloodToDb[bloodType],
           ...(xrayImageBase64?.trim() ? { xrayImageBase64: xrayImageBase64.trim() } : {}),

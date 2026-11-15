@@ -2,7 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion } from "framer-motion"
-import { type CountryCode } from "libphonenumber-js"
 import { type ChangeEvent, useEffect, useMemo, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import toast from "react-hot-toast"
@@ -31,12 +30,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { PhoneCountryField } from "@/components/ui/phone-country-field"
-import {
-  buildE164FromCountryAndLocal,
-  isValidForCountry,
-  splitPhoneToCountryAndLocal,
-} from "@/lib/phone"
 import {
   Select,
   SelectContent,
@@ -59,7 +52,14 @@ const patientProfileSchema = z.object({
     .trim()
     .min(3, "Name must be at least 3 characters")
     .max(80, "Name is too long"),
-  phone: z.string().trim().optional(),
+  phone: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || /^0\d{9}$/.test(value), {
+      message: "Phone must be exactly 10 digits and start with 0",
+    })
+    .optional(),
+  documentNumber: z.string().trim().max(50, "Document number is too long").optional(),
   age: z.preprocess(
     (value) => (value === "" || value == null ? null : value),
     z.coerce.number().int().positive("Age must be greater than 0").nullable()
@@ -98,6 +98,7 @@ const readFileAsDataUrl = async (file: File): Promise<string> => {
 const resetFormState = () => ({
   name: "",
   phone: "",
+  documentNumber: "",
   age: "",
   bloodType: null,
   xrayImageBase64: "",
@@ -118,8 +119,6 @@ export function PatientManagement() {
   const [isLoadingPatients, setIsLoadingPatients] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [phoneCountry, setPhoneCountry] = useState<CountryCode>("SY")
-  const [phoneLocal, setPhoneLocal] = useState("")
   const [previewXrayImage, setPreviewXrayImage] = useState<string | null>(null)
   const [previewXrayTitle, setPreviewXrayTitle] = useState<string>("")
   const [reservationsPatient, setReservationsPatient] = useState<PatientProfile | null>(null)
@@ -132,12 +131,6 @@ export function PatientManagement() {
     resolver: zodResolver(patientProfileSchema),
     defaultValues: resetFormState(),
   })
-
-  useEffect(() => {
-    const normalized =
-      phoneLocal.trim().length > 0 ? buildE164FromCountryAndLocal(phoneCountry, phoneLocal) : ""
-    form.setValue("phone", normalized, { shouldDirty: true, shouldValidate: false })
-  }, [form, phoneCountry, phoneLocal])
 
   const loadPatients = async () => {
     setIsLoadingPatients(true)
@@ -190,17 +183,15 @@ export function PatientManagement() {
     const method = editorMode === "edit" ? "PATCH" : "POST"
 
     try {
-      if (phoneLocal.trim() && !isValidForCountry(phoneCountry, phoneLocal)) {
-        throw new Error(t("patients.phoneInvalid"))
-      }
-      const normalizedPhone = phoneLocal.trim()
-        ? buildE164FromCountryAndLocal(phoneCountry, phoneLocal)
-        : null
       const response = await fetch(endpoint, {
         method,
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, phone: normalizedPhone }),
+        body: JSON.stringify({
+          ...values,
+          phone: values.phone?.trim() || null,
+          documentNumber: values.documentNumber?.trim() || null,
+        }),
       })
 
       const result = (await response.json()) as { data?: PatientProfile; message?: string }
@@ -313,8 +304,6 @@ export function PatientManagement() {
     setSelectedPatient(null)
     setErrorMessage(null)
     form.reset(resetFormState())
-    setPhoneCountry("SY")
-    setPhoneLocal("")
     setEditorOpen(true)
   }
 
@@ -325,18 +314,11 @@ export function PatientManagement() {
     form.reset({
       name: patient.name,
       phone: patient.phone ?? "",
+      documentNumber: patient.documentNumber ?? "",
       age: patient.age ?? "",
       bloodType: patient.bloodType ?? null,
       xrayImageBase64: patient.xrayImageBase64 ?? "",
     })
-    if (patient.phone) {
-      const split = splitPhoneToCountryAndLocal(patient.phone, "SY")
-      setPhoneCountry(split.country)
-      setPhoneLocal(split.localNumber)
-    } else {
-      setPhoneCountry("SY")
-      setPhoneLocal("")
-    }
     setEditorOpen(true)
   }
 
@@ -420,6 +402,7 @@ export function PatientManagement() {
                     <p className="truncate font-medium">{patient.name}</p>
                     <p className="text-muted-foreground text-xs sm:text-sm">
                       <span className="break-all">{patient.phone ?? "—"}</span>
+                      {patient.documentNumber ? ` • ${t("patients.documentNumber")}: ${patient.documentNumber}` : ""}
                       {patient.age != null ? ` • ${patient.age} ${t("patients.years")}` : ""}
                       {patient.bloodType ? ` • ${patient.bloodType}` : ""}
                       {(patient.balanceDueCents ?? 0) > 0 && (
@@ -525,17 +508,43 @@ export function PatientManagement() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="patient-phone">{t("patients.phone")} ({t("scheduler.optional")})</Label>
-              <PhoneCountryField
-                country={phoneCountry}
-                localNumber={phoneLocal}
-                onCountryChange={setPhoneCountry}
-                onLocalNumberChange={setPhoneLocal}
-                disabled={isSubmitting}
-                countryId="patient-country"
-                phoneId="patient-phone"
+              <Controller
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    id="patient-phone"
+                    disabled={isSubmitting}
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={10}
+                    placeholder="09xxxxxxxx"
+                    value={field.value ?? ""}
+                    onChange={(event) =>
+                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 10))
+                    }
+                  />
+                )}
               />
+              <p className="text-muted-foreground text-xs">{t("patients.phoneHint")}</p>
               {formError.phone && (
                 <p className="text-sm text-red-600">{formError.phone.message}</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="patient-document-number">
+                {t("patients.documentNumber")} ({t("scheduler.optional")})
+              </Label>
+              <Input
+                disabled={isSubmitting}
+                id="patient-document-number"
+                maxLength={50}
+                placeholder={t("patients.documentPlaceholder")}
+                {...form.register("documentNumber")}
+              />
+              {formError.documentNumber && (
+                <p className="text-sm text-red-600">{formError.documentNumber.message}</p>
               )}
             </div>
             <div className="space-y-1">

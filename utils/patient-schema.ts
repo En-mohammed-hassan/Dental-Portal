@@ -18,6 +18,7 @@ export const patientSchema = z.object({
       "Phone must be exactly 10 digits (e.g. 0993198176)"
     )
     .optional(),
+  documentNumber: z.string().trim().max(50, "Document number is too long").optional(),
   age: z.preprocess(
     (value) => (value === "" || value == null ? null : value),
     z.coerce.number().int().positive("Age must be greater than 0").nullable()

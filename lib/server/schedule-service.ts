@@ -47,6 +47,7 @@ export async function getScheduleDay(from: Date, to: Date) {
       status: true,
       appointmentDate: true,
       endsAt: true,
+      note: true,
       serviceType: true,
       patient: {
         select: {
@@ -70,6 +71,7 @@ export async function getScheduleDay(from: Date, to: Date) {
       0,
       Math.round((row.endsAt.getTime() - row.appointmentDate.getTime()) / 60_000)
     ),
+    note: row.note,
     serviceType: row.serviceType.toLowerCase(),
   }))
 }

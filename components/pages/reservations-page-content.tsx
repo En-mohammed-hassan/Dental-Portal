@@ -60,6 +60,8 @@ export function ReservationsPageContent() {
 
   const [searchTerm, setSearchTerm] = useState("")
   const [viewMode, setViewMode] = useState<"calendar" | "queue">("calendar")
+  const [schedulerOpen, setSchedulerOpen] = useState(false)
+  const [schedulerDay, setSchedulerDay] = useState<Date | null>(null)
   const [filterType, setFilterType] = useState<BookingType | "all">("all")
   const [pendingStartPatientId, setPendingStartPatientId] = useState<string | null>(null)
   const [replaceDialogOpen, setReplaceDialogOpen] = useState(false)
@@ -243,52 +245,31 @@ export function ReservationsPageContent() {
   }
 
   return (
-    <div className="space-y-8 pb-4">
-      <header className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">{t("reservations.title")}</h1>
-            <p className="text-muted-foreground text-sm">{t("reservations.subtitle")}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <ReservationSchedulerDialog
-              onSubmitReservation={addReservation}
-              onCancelReservation={cancelReservation}
-              isProcessing={isProcessing}
-            />
-          </div>
-        </div>
-        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
-        <StatsSummary
-          emergencyCount={emergencyCount}
-          upcomingCount={upcomingPatients.length}
-          waitingCount={waitingPatients.length}
-        />
-      </header>
-
-      <div className="flex w-full rounded-xl border bg-muted/40 p-1 sm:w-fit">
-        <Button
-          className="flex-1 sm:flex-none"
-          size="sm"
-          variant={viewMode === "calendar" ? "default" : "ghost"}
-          onClick={() => setViewMode("calendar")}
-        >
-          <CalendarDays className="me-2 h-4 w-4" />
-          {t("reservations.calendarView")}
-        </Button>
-        <Button
-          className="flex-1 sm:flex-none"
-          size="sm"
-          variant={viewMode === "queue" ? "default" : "ghost"}
-          onClick={() => setViewMode("queue")}
-        >
-          <List className="me-2 h-4 w-4" />
-          {t("reservations.queueView")}
-        </Button>
-      </div>
+    <div className="space-y-4 pb-4">
+      {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
 
       {viewMode === "calendar" ? (
-        <ReservationCalendarView revision={scheduleRevision} />
+        <>
+          <ReservationCalendarView
+            revision={scheduleRevision}
+            onAddReservation={(day) => {
+              setSchedulerDay(day)
+              setSchedulerOpen(true)
+            }}
+          />
+          <ReservationSchedulerDialog
+            controlledOpen={schedulerOpen}
+            initialDay={schedulerDay}
+            showTrigger={false}
+            onDialogOpenChange={(next) => {
+              setSchedulerOpen(next)
+              if (!next) setSchedulerDay(null)
+            }}
+            onSubmitReservation={addReservation}
+            onCancelReservation={cancelReservation}
+            isProcessing={isProcessing}
+          />
+        </>
       ) : (
         <>
           <section
