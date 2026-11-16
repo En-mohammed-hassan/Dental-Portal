@@ -24,7 +24,9 @@
     "reservationCancelled": "تم إلغاء الحجز",
     "cancelReservationFailed": "تعذّر إلغاء الحجز",
     "reservationDeleted": "تم حذف السجل من التاريخ",
-    "deleteReservationFailed": "تعذّر حذف السجل"
+    "deleteReservationFailed": "تعذّر حذف السجل",
+    "reservationUpdated": "تم تحديث الحجز",
+    "updateReservationFailed": "تعذّر تحديث الحجز"
   },
   "actions": {
     "save": "حفظ",
@@ -304,6 +306,24 @@
     "balanceAfterSession": "الرصيد بعد هذه الجلسة",
     "chargeHint": "يُضاف لما على المريض. اتركه فارغاً إذا سُجّلت التكلفة في زيارة سابقة.",
     "paymentHint": "يُخصم من رصيد المريض الجاري."
+  },
+  "reservationDetails": {
+    "description": "راجع جميع بيانات الحجز وملاحظته أو عدّل تفاصيل الموعد.",
+    "openLabel": "فتح حجز {{name}} الساعة {{time}}",
+    "date": "تاريخ الحجز",
+    "timeAndPeriod": "الوقت والمدة",
+    "noPeriod": "لم يتم تحديد مدة",
+    "notProvided": "غير مضاف",
+    "noteTitle": "ملاحظة الحجز",
+    "noNote": "لم تتم إضافة ملاحظة لهذا الحجز.",
+    "createdAt": "أُنشئ {{value}}",
+    "arrived": "حضر: {{value}}",
+    "editReservation": "تعديل الحجز",
+    "saveChanges": "حفظ التعديلات",
+    "deleteTitle": "حذف هذا الحجز؟",
+    "deleteDescription": "سيُحذف الحجز نهائياً من الجدول ولا يمكن التراجع عن ذلك.",
+    "confirmDelete": "حذف نهائي",
+    "currentLocked": "لا يمكن تعديل أو حذف علاج جارٍ حالياً. أنهِ العلاج أولاً."
   },
   "reservationForm": {
     "addReservation": "إضافة حجز",

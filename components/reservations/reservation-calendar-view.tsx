@@ -21,29 +21,15 @@ import { useTranslation } from "react-i18next"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import {
-  type BookingType,
-  type ReservationStatus,
-  type ServiceType,
-} from "@/types/patient"
+  ReservationDetailsDialog,
+  type ScheduleReservation,
+} from "@/components/reservations/reservation-details-dialog"
+import { cn } from "@/lib/utils"
+import { type UpdateReservationInput } from "@/types/patient"
 import {
   serviceTypeBadgeClass,
 } from "@/utils/patient"
-
-type DayAppointment = {
-  id: string
-  patientId: string
-  patientName: string
-  patientPhone: string | null
-  bookingType: BookingType
-  status: ReservationStatus
-  startsAt: string
-  endsAt: string
-  durationMinutes: number
-  note?: string | null
-  serviceType: ServiceType
-}
 
 type MonthCount = {
   date: string
@@ -53,6 +39,12 @@ type MonthCount = {
 type Props = {
   revision?: string
   onAddReservation?: (day: Date) => void
+  onUpdateReservation: (
+    reservationId: string,
+    payload: UpdateReservationInput
+  ) => Promise<boolean>
+  onDeleteReservation: (reservationId: string) => Promise<boolean>
+  isProcessing?: boolean
 }
 
 function dateKey(date: Date): string {
@@ -71,7 +63,13 @@ function timeLabel(date: Date, locale: string): string {
   }).format(date)
 }
 
-export function ReservationCalendarView({ revision = "", onAddReservation }: Props) {
+export function ReservationCalendarView({
+  revision = "",
+  onAddReservation,
+  onUpdateReservation,
+  onDeleteReservation,
+  isProcessing = false,
+}: Props) {
   const { t, i18n } = useTranslation(["admin", "common"])
   const locale = i18n.language || "en"
   const today = useMemo(() => new Date(), [])
@@ -80,7 +78,8 @@ export function ReservationCalendarView({ revision = "", onAddReservation }: Pro
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = useState(() => new Date())
   const [monthCounts, setMonthCounts] = useState<Record<string, number>>({})
-  const [appointments, setAppointments] = useState<DayAppointment[]>([])
+  const [appointments, setAppointments] = useState<ScheduleReservation[]>([])
+  const [selectedAppointment, setSelectedAppointment] = useState<ScheduleReservation | null>(null)
   const [monthLoading, setMonthLoading] = useState(false)
   const [dayLoading, setDayLoading] = useState(false)
   const [monthError, setMonthError] = useState<string | null>(null)
@@ -140,7 +139,7 @@ export function ReservationCalendarView({ revision = "", onAddReservation }: Pro
     )
       .then(async (response) => {
         const payload = (await response.json()) as {
-          reservations?: DayAppointment[]
+          reservations?: ScheduleReservation[]
           message?: string
         }
         if (!response.ok) {
@@ -178,6 +177,19 @@ export function ReservationCalendarView({ revision = "", onAddReservation }: Pro
       selectedDay.getMonth(),
       selectedDay.getDate() + 1
     ).getTime() > Date.now()
+
+  const appointmentColumns = useMemo(() => {
+    const firstColumnSize = Math.ceil(appointments.length / 2)
+    return [
+      appointments.slice(0, firstColumnSize),
+      appointments.slice(firstColumnSize),
+    ]
+  }, [appointments])
+
+  const refreshAfterChange = () => {
+    setSelectedAppointment(null)
+    setManualRefresh((value) => value + 1)
+  }
 
   return (
     <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
@@ -365,53 +377,74 @@ export function ReservationCalendarView({ revision = "", onAddReservation }: Pro
               </p>
             </div>
           ) : (
-            <div className="grid max-h-[24rem] grid-cols-2 gap-1.5 overflow-y-auto pe-1">
-              {appointments.map((appointment) => {
-                const start = new Date(appointment.startsAt)
-                return (
-                  <article
-                    key={appointment.id}
-                    className="min-w-0 overflow-hidden rounded-md border bg-background p-1.5 shadow-sm"
-                    title={appointment.note || undefined}
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-1">
-                      <p className="truncate text-xs font-bold tabular-nums">
-                        {timeLabel(start, locale)}
-                      </p>
-                      {appointment.durationMinutes > 0 && (
-                        <span className="shrink-0 text-[9px] text-muted-foreground">
-                          {appointment.durationMinutes} {t("scheduler.min")}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-1 flex min-w-0 items-center justify-between gap-1 border-t pt-1">
-                      <p className="min-w-0 truncate text-xs font-semibold">
-                        <span>{appointment.patientName}</span>
-                        {appointment.patientPhone && (
-                          <>
-                            <span> - </span>
-                            <span dir="ltr">{appointment.patientPhone}</span>
-                          </>
-                        )}
-                      </p>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "shrink-0 px-1 py-0 text-[8px]",
-                          serviceTypeBadgeClass[appointment.serviceType]
-                        )}
+            <div className="grid max-h-[24rem] grid-cols-2 items-start gap-1.5 overflow-y-auto pe-1">
+              {appointmentColumns.map((column, columnIndex) => (
+                <div key={columnIndex} className="flex min-w-0 flex-col gap-1.5">
+                  {column.map((appointment) => {
+                    const start = new Date(appointment.startsAt)
+                    return (
+                      <button
+                        key={appointment.id}
+                        type="button"
+                        onClick={() => setSelectedAppointment(appointment)}
+                        className="min-w-0 overflow-hidden rounded-md border bg-background p-1.5 text-start shadow-sm transition hover:border-primary/50 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                        aria-label={t("reservationDetails.openLabel", {
+                          name: appointment.patientName,
+                          time: timeLabel(start, locale),
+                        })}
                       >
-                        {t(`scheduler.service.${appointment.serviceType}`)}
-                      </Badge>
-                    </div>
-                  </article>
-                )
-              })}
+                        <div className="flex min-w-0 items-center justify-between gap-1">
+                          <p className="truncate text-xs font-bold tabular-nums">
+                            {timeLabel(start, locale)}
+                          </p>
+                          {appointment.durationMinutes > 0 && (
+                            <span className="shrink-0 text-[9px] text-muted-foreground">
+                              {appointment.durationMinutes} {t("scheduler.min")}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-1 flex min-w-0 items-center justify-between gap-1 border-t pt-1">
+                          <p className="min-w-0 truncate text-xs font-semibold">
+                            <span>{appointment.patientName}</span>
+                            {appointment.patientPhone && (
+                              <>
+                                <span> - </span>
+                                <span dir="ltr">{appointment.patientPhone}</span>
+                              </>
+                            )}
+                          </p>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "shrink-0 px-1 py-0 text-[8px]",
+                              serviceTypeBadgeClass[appointment.serviceType]
+                            )}
+                          >
+                            {t(`scheduler.service.${appointment.serviceType}`)}
+                          </Badge>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
+
+      <ReservationDetailsDialog
+        reservation={selectedAppointment}
+        open={Boolean(selectedAppointment)}
+        isProcessing={isProcessing}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSelectedAppointment(null)
+        }}
+        onUpdate={onUpdateReservation}
+        onDelete={onDeleteReservation}
+        onChanged={refreshAfterChange}
+      />
     </section>
   )
 }

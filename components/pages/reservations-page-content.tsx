@@ -52,6 +52,8 @@ export function ReservationsPageContent() {
     startTreatment,
     finishTreatment,
     cancelReservation,
+    updateReservation,
+    deleteScheduleReservation,
     hydrate,
     errorMessage,
     isLoading,
@@ -252,6 +254,9 @@ export function ReservationsPageContent() {
         <>
           <ReservationCalendarView
             revision={scheduleRevision}
+            isProcessing={isProcessing}
+            onUpdateReservation={updateReservation}
+            onDeleteReservation={deleteScheduleReservation}
             onAddReservation={(day) => {
               setSchedulerDay(day)
               setSchedulerOpen(true)

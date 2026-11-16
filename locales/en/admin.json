@@ -24,7 +24,9 @@
     "reservationCancelled": "Reservation cancelled",
     "cancelReservationFailed": "Could not cancel reservation",
     "reservationDeleted": "Record deleted from history",
-    "deleteReservationFailed": "Could not delete record"
+    "deleteReservationFailed": "Could not delete record",
+    "reservationUpdated": "Reservation updated",
+    "updateReservationFailed": "Could not update reservation"
   },
   "actions": {
     "save": "Save",
@@ -304,6 +306,24 @@
     "balanceAfterSession": "Balance after this session",
     "chargeHint": "Adds to what the patient owes. Leave empty if cost was set in a previous visit.",
     "paymentHint": "Subtracts from the patient's running balance."
+  },
+  "reservationDetails": {
+    "description": "Review the complete reservation, including its note, or edit its scheduling details.",
+    "openLabel": "Open {{name}} reservation at {{time}}",
+    "date": "Reservation date",
+    "timeAndPeriod": "Time and period",
+    "noPeriod": "No period specified",
+    "notProvided": "Not provided",
+    "noteTitle": "Reservation note",
+    "noNote": "No reservation note was added.",
+    "createdAt": "Created {{value}}",
+    "arrived": "Arrived: {{value}}",
+    "editReservation": "Edit reservation",
+    "saveChanges": "Save changes",
+    "deleteTitle": "Delete this reservation?",
+    "deleteDescription": "This permanently removes the reservation from the schedule and cannot be undone.",
+    "confirmDelete": "Delete permanently",
+    "currentLocked": "A treatment currently in progress cannot be edited or deleted. Finish it first."
   },
   "reservationForm": {
     "addReservation": "Add reservation",

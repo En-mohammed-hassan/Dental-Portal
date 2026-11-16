@@ -104,6 +104,15 @@ export interface NewReservationInput {
   slotId?: string
 }
 
+export interface UpdateReservationInput {
+  appointmentDate: string
+  /** Optional treatment period in minutes. Null means no period was specified. */
+  durationMinutes?: number | null
+  /** Optional booking note; separate from the clinical treatment note. */
+  note?: string | null
+  serviceType: ServiceType
+}
+
 export interface PatientProfile {
   id: string
   name: string

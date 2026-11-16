@@ -45,14 +45,17 @@ export async function getScheduleDay(from: Date, to: Date) {
       patientId: true,
       bookingType: true,
       status: true,
+      hasArrived: true,
       appointmentDate: true,
       endsAt: true,
+      createdAt: true,
       note: true,
       serviceType: true,
       patient: {
         select: {
           name: true,
           phone: true,
+          documentNumber: true,
         },
       },
     },
@@ -63,10 +66,13 @@ export async function getScheduleDay(from: Date, to: Date) {
     patientId: row.patientId,
     patientName: row.patient.name,
     patientPhone: row.patient.phone,
+    patientDocumentNumber: row.patient.documentNumber,
     bookingType: row.bookingType.toLowerCase().replace("_", "-"),
     status: row.status.toLowerCase(),
+    hasArrived: row.hasArrived,
     startsAt: row.appointmentDate.toISOString(),
     endsAt: row.endsAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
     durationMinutes: Math.max(
       0,
       Math.round((row.endsAt.getTime() - row.appointmentDate.getTime()) / 60_000)

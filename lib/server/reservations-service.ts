@@ -6,6 +6,7 @@ import { sendSms, treatmentDoneMessage } from "@/lib/sms"
 import {
   type NewPatientInput,
   type NewReservationInput,
+  type UpdateReservationInput,
   type Patient,
   type PatientProfile,
   type BloodType as AppBloodType,
@@ -949,6 +950,62 @@ export async function cancelUpcomingAdvanceReservation(
 
   await prisma.reservation.delete({
     where: { id: reservationId },
+  })
+
+  return toReservationsData()
+}
+
+export async function updateReservation(
+  reservationId: string,
+  payload: UpdateReservationInput
+): Promise<ReservationsData> {
+  const target = await prisma.reservation.findUnique({ where: { id: reservationId } })
+
+  if (!target) {
+    throw new Error("Reservation not found")
+  }
+  if (target.status === "CURRENT") {
+    throw new Error("Cannot edit the current treatment. Please finish it first.")
+  }
+
+  if (!payload.appointmentDate || Number.isNaN(Date.parse(payload.appointmentDate))) {
+    throw new Error("Invalid appointment start time")
+  }
+  const appointmentDate = new Date(payload.appointmentDate)
+  const appointmentChanged = appointmentDate.getTime() !== target.appointmentDate.getTime()
+  if (
+    appointmentChanged &&
+    target.status !== "COMPLETED" &&
+    appointmentDate.getTime() <= Date.now()
+  ) {
+    throw new Error("Choose a future start time")
+  }
+
+  const duration = payload.durationMinutes == null ? 0 : Number(payload.durationMinutes)
+  if (!Number.isInteger(duration) || duration < 0 || duration > 1440) {
+    throw new Error("Duration must be a whole number between 1 and 1440 minutes, or left empty")
+  }
+
+  const serviceType = serviceTypeToDb[payload.serviceType]
+  if (!serviceType) {
+    throw new Error("Invalid service type")
+  }
+
+  const note = payload.note?.trim() || null
+  if (note && note.length > 500) {
+    throw new Error("Reservation note must be 500 characters or fewer")
+  }
+
+  await prisma.reservation.update({
+    where: { id: reservationId },
+    data: {
+      appointmentDate,
+      endsAt: new Date(appointmentDate.getTime() + duration * 60_000),
+      note,
+      serviceType,
+      // A manually edited reservation no longer represents the published slot.
+      slotId: null,
+    },
   })
 
   return toReservationsData()

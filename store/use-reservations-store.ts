@@ -5,7 +5,12 @@ import toast from "react-hot-toast"
 
 import { i18n } from "@/lib/i18n/client"
 import { translateApiMessage } from "@/lib/i18n/toast"
-import { type FinishTreatmentInput, type NewReservationInput, type Patient } from "@/types/patient"
+import {
+  type FinishTreatmentInput,
+  type NewReservationInput,
+  type Patient,
+  type UpdateReservationInput,
+} from "@/types/patient"
 import { type ReservationsApiResponse } from "@/types/reservations"
 
 interface ReservationsState {
@@ -23,6 +28,8 @@ interface ReservationsState {
   startTreatment: (patientId: string, replaceCurrent: boolean) => Promise<boolean>
   finishTreatment: (payload: FinishTreatmentInput) => Promise<boolean>
   cancelReservation: (patientId: string) => Promise<boolean>
+  updateReservation: (reservationId: string, payload: UpdateReservationInput) => Promise<boolean>
+  deleteScheduleReservation: (reservationId: string) => Promise<boolean>
   deleteReservationFromHistory: (reservationId: string) => Promise<boolean>
 }
 
@@ -195,6 +202,50 @@ export const useReservationsStore = create<ReservationsState>()((set) => ({
         error instanceof Error
           ? translateApiMessage(error.message, "admin:toast.cancelReservationFailed")
           : i18n.t("admin:toast.cancelReservationFailed")
+      set({ errorMessage: message })
+      toast.error(message)
+      return false
+    } finally {
+      set({ isProcessing: false })
+    }
+  },
+  updateReservation: async (reservationId, payload) => {
+    set({ isProcessing: true })
+    try {
+      const response = await requestReservations(`/api/reservations/${reservationId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+      set({ ...response.data, errorMessage: null })
+      toast.success(i18n.t("admin:toast.reservationUpdated"))
+      return true
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.updateReservationFailed")
+          : i18n.t("admin:toast.updateReservationFailed")
+      set({ errorMessage: message })
+      toast.error(message)
+      return false
+    } finally {
+      set({ isProcessing: false })
+    }
+  },
+  deleteScheduleReservation: async (reservationId) => {
+    set({ isProcessing: true })
+    try {
+      const response = await requestReservations(
+        `/api/reservations/${reservationId}?fromHistory=true`,
+        { method: "DELETE" }
+      )
+      set({ ...response.data, errorMessage: null })
+      toast.success(i18n.t("admin:toast.reservationDeleted"))
+      return true
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? translateApiMessage(error.message, "admin:toast.deleteReservationFailed")
+          : i18n.t("admin:toast.deleteReservationFailed")
       set({ errorMessage: message })
       toast.error(message)
       return false
