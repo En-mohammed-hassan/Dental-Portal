@@ -23,6 +23,7 @@ import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { PatientSearch } from "@/components/patients/patient-search"
 import {
   Dialog,
   DialogContent,
@@ -34,13 +35,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import {
@@ -87,7 +81,6 @@ export function ReservationSchedulerDialog({
   const [patientsLoading, setPatientsLoading] = useState(false)
   const [patientMode, setPatientMode] = useState<"existing" | "new">("existing")
   const [selectedPatientId, setSelectedPatientId] = useState("")
-  const [patientSearch, setPatientSearch] = useState("")
   const [name, setName] = useState("")
   const [phoneLocal, setPhoneLocal] = useState("")
   const [documentNumber, setDocumentNumber] = useState("")
@@ -102,7 +95,6 @@ export function ReservationSchedulerDialog({
     setNote("")
     setPatientMode("existing")
     setSelectedPatientId("")
-    setPatientSearch("")
     setName("")
     setPhoneLocal("")
     setDocumentNumber("")
@@ -210,17 +202,6 @@ export function ReservationSchedulerDialog({
       error: null,
     }
   }, [manualTime, parsedDuration, selectedDay, t])
-
-  const filteredPatients = useMemo(() => {
-    const search = patientSearch.trim().toLowerCase()
-    if (!search) return patients
-    return patients.filter(
-      (patient) =>
-        patient.name.toLowerCase().includes(search) ||
-        (patient.phone?.toLowerCase().includes(search) ?? false) ||
-        (patient.documentNumber?.toLowerCase().includes(search) ?? false)
-    )
-  }, [patientSearch, patients])
 
   const submit = async () => {
     setInlineError(null)
@@ -478,29 +459,14 @@ export function ReservationSchedulerDialog({
                     </div>
 
                     {patientMode === "existing" ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Input
-                          aria-label={t("reservationForm.searchPatient")}
-                          value={patientSearch}
-                          onChange={(event) => setPatientSearch(event.target.value)}
-                          placeholder={t("reservationForm.searchPatient")}
-                        />
-                        <Select
-                          value={selectedPatientId || "none"}
-                          onValueChange={(value) => setSelectedPatientId(value === "none" ? "" : value)}
-                          disabled={patientsLoading}
-                        >
-                          <SelectTrigger><SelectValue placeholder={t("reservationForm.selectPatient")} /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">{t("reservationForm.selectPatient")}</SelectItem>
-                            {filteredPatients.map((patient) => (
-                              <SelectItem key={patient.id} value={patient.id}>
-                                {patient.name}{patient.phone ? ` — ${patient.phone}` : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <PatientSearch
+                        mode="select"
+                        patients={patients}
+                        selectedPatientId={selectedPatientId}
+                        onPatientSelect={setSelectedPatientId}
+                        loading={patientsLoading}
+                        disabled={isProcessing}
+                      />
                     ) : (
                       <div className="grid gap-2 sm:grid-cols-2">
                         <Input

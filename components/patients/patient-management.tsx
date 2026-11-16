@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select"
 import { PatientBillingPanel } from "@/components/billing/patient-billing-summary"
 import { LinkedReservationsDialog } from "@/components/patients/linked-reservations-dialog"
+import { PatientSearch } from "@/components/patients/patient-search"
 import { formatMoneyFromCents } from "@/lib/format"
 import { parseLocale } from "@/lib/locale"
 import { BLOOD_TYPES, type PatientProfile } from "@/types/patient"
@@ -110,6 +111,8 @@ export function PatientManagement() {
   // State management
   const [patients, setPatients] = useState<PatientProfile[]>([])
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [refreshVersion, setRefreshVersion] = useState(0)
   const [page, setPage] = useState(1)
   const [selectedPatient, setSelectedPatient] = useState<PatientProfile | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -132,30 +135,35 @@ export function PatientManagement() {
     defaultValues: resetFormState(),
   })
 
-  const loadPatients = async () => {
-    setIsLoadingPatients(true)
-    try {
-      const response = await fetch(`/api/patients?search=${encodeURIComponent(search)}`, {
-        credentials: "include",
-      })
-      if (!response.ok) {
-        const result = (await response.json()) as { message?: string }
-        throw new Error(result.message ?? t("patients.loadFailed"))
-      }
-      const data = (await response.json()) as { data?: PatientProfile[] }
-      setPatients(data.data ?? [])
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t("patients.loadFailed")
-      toast.error(message)
-      setPatients([])
-    } finally {
-      setIsLoadingPatients(false)
-    }
-  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
   useEffect(() => {
-    void loadPatients()
-  }, [search])
+    const controller = new AbortController()
+    setIsLoadingPatients(true)
+
+    void fetch(`/api/patients?search=${encodeURIComponent(debouncedSearch)}`, {
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const result = (await response.json()) as { data?: PatientProfile[]; message?: string }
+        if (!response.ok) throw new Error(result.message ?? t("patients.loadFailed"))
+        setPatients(result.data ?? [])
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return
+        toast.error(error instanceof Error ? error.message : t("patients.loadFailed"))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingPatients(false)
+      })
+
+    return () => controller.abort()
+  }, [debouncedSearch, refreshVersion, t])
 
   useEffect(() => {
     setPage(1)
@@ -215,8 +223,6 @@ export function PatientManagement() {
         setPatients((prev) => [result.data!, ...prev])
         toast.success(t("patients.created"))
       } else {
-        // Fallback: refetch if we don't have the data
-        await loadPatients()
         toast.success(
           editorMode === "edit" ? t("patients.updated") : t("patients.created")
         )
@@ -225,7 +231,7 @@ export function PatientManagement() {
       form.reset(resetFormState())
       setSelectedPatient(null)
       setEditorOpen(false)
-      await loadPatients()
+      setRefreshVersion((value) => value + 1)
     } catch (error) {
       const message = error instanceof Error ? error.message : t("patients.saveFailed")
       setErrorMessage(message)
@@ -288,7 +294,8 @@ export function PatientManagement() {
       }
 
       setDeletePatientId(null)
-      await loadPatients()
+      setPatients((current) => current.filter((patient) => patient.id !== deletePatientId))
+      setRefreshVersion((value) => value + 1)
       toast.success(t("patients.deleted"))
     } catch (error) {
       const message = error instanceof Error ? error.message : t("patients.deleteFailed")
@@ -349,11 +356,12 @@ export function PatientManagement() {
                 {t("patients.addPatient")}
               </Button>
             </div>
-            <Input
-              disabled={isLoadingPatients || isSubmitting || isDeleting}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t("patients.searchPlaceholder")}
+            <PatientSearch
+              mode="filter"
               value={search}
+              onValueChange={setSearch}
+              loading={isLoadingPatients}
+              disabled={isSubmitting || isDeleting}
             />
           </CardHeader>
           <CardContent className="space-y-2">
