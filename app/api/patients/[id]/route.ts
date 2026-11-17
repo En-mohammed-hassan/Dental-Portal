@@ -4,6 +4,7 @@ import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
 import { requireStaffApi } from "@/lib/api/require-staff"
 import {
   deletePatientProfile,
+  getPatientProfile,
   updatePatientProfile,
 } from "@/lib/server/reservations-service"
 
@@ -13,6 +14,31 @@ export const dynamic = "force-dynamic"
 // Handle CORS preflight requests
 export async function OPTIONS(request: Request) {
   return handleCorsPreflight(request)
+}
+
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id } = await context.params
+
+  try {
+    const denied = await requireStaffApi()
+    if (denied) {
+      return addCorsHeaders(denied, request)
+    }
+    const data = await getPatientProfile(id)
+    const response = NextResponse.json(
+      { data },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    )
+    return addCorsHeaders(response, request)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load patient"
+    const status = message === "Patient not found" ? 404 : 400
+    const response = NextResponse.json({ message }, { status })
+    return addCorsHeaders(response, request)
+  }
 }
 
 export async function PATCH(

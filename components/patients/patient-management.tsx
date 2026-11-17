@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion } from "framer-motion"
-import { type ChangeEvent, useEffect, useMemo, useState } from "react"
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
@@ -125,6 +125,8 @@ export function PatientManagement() {
   const [previewXrayImage, setPreviewXrayImage] = useState<string | null>(null)
   const [previewXrayTitle, setPreviewXrayTitle] = useState<string>("")
   const [reservationsPatient, setReservationsPatient] = useState<PatientProfile | null>(null)
+  const [isLoadingPatientReservations, setIsLoadingPatientReservations] = useState(false)
+  const reservationDetailsRequestRef = useRef<AbortController | null>(null)
 
   const form = useForm<
     PatientProfileFormInputValues,
@@ -134,6 +136,10 @@ export function PatientManagement() {
     resolver: zodResolver(patientProfileSchema),
     defaultValues: resetFormState(),
   })
+
+  useEffect(() => {
+    return () => reservationDetailsRequestRef.current?.abort()
+  }, [])
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -334,8 +340,34 @@ export function PatientManagement() {
     setPreviewXrayTitle(`${patientName} X-ray`)
   }
 
-  const openPatientReservations = (patient: PatientProfile) => {
+  const openPatientReservations = async (patient: PatientProfile) => {
+    reservationDetailsRequestRef.current?.abort()
+    const controller = new AbortController()
+    reservationDetailsRequestRef.current = controller
     setReservationsPatient(patient)
+    setIsLoadingPatientReservations(true)
+
+    try {
+      const response = await fetch(`/api/patients/${patient.id}`, {
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      })
+      const result = (await response.json()) as { data?: PatientProfile; message?: string }
+      if (!response.ok || !result.data) {
+        throw new Error(result.message ?? t("linkedReservations.loadFailed"))
+      }
+      if (!controller.signal.aborted) {
+        setReservationsPatient(result.data)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return
+      toast.error(error instanceof Error ? error.message : t("linkedReservations.loadFailed"))
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsLoadingPatientReservations(false)
+      }
+    }
   }
 
   const xrayPreview = form.watch("xrayImageBase64")
@@ -376,7 +408,7 @@ export function PatientManagement() {
                 <motion.div
                   className="bg-background/80 hover:border-primary/40 flex cursor-pointer flex-col gap-3 rounded-md border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between"
                   key={patient.id}
-                  onClick={() => openPatientReservations(patient)}
+                  onClick={() => void openPatientReservations(patient)}
                   initial={{ opacity: 0, y: 8, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.98 }}
@@ -674,8 +706,12 @@ export function PatientManagement() {
       </Dialog>
 
       <LinkedReservationsDialog
+        loading={isLoadingPatientReservations}
         onOpenChange={(open) => {
           if (!open) {
+            reservationDetailsRequestRef.current?.abort()
+            reservationDetailsRequestRef.current = null
+            setIsLoadingPatientReservations(false)
             setReservationsPatient(null)
           }
         }}

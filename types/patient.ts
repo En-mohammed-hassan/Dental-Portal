@@ -139,5 +139,13 @@ export interface PatientProfile {
     note?: string | null
     treatmentNote?: string | null
     xrayImageBase64?: string | null
+    feeCents?: number | null
+    chargeCents?: number | null
+    paymentCents?: number | null
+    balanceAfterCents?: number | null
+    paymentStatus?: PaymentStatusLabel | null
+    canalsCount?: number | null
+    teethTreated?: string[] | null
+    procedureSummary?: string | null
   }>
 }

@@ -23,6 +23,7 @@ import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { CreatePatientDialog } from "@/components/patients/create-patient-dialog"
 import { PatientSearch } from "@/components/patients/patient-search"
 import {
   Dialog,
@@ -79,11 +80,11 @@ export function ReservationSchedulerDialog({
   const [note, setNote] = useState("")
   const [patients, setPatients] = useState<PatientProfile[]>([])
   const [patientsLoading, setPatientsLoading] = useState(false)
-  const [patientMode, setPatientMode] = useState<"existing" | "new">("existing")
   const [selectedPatientId, setSelectedPatientId] = useState("")
-  const [name, setName] = useState("")
-  const [phoneLocal, setPhoneLocal] = useState("")
-  const [documentNumber, setDocumentNumber] = useState("")
+  const [patientSearch, setPatientSearch] = useState("")
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState("")
+  const [createPatientOpen, setCreatePatientOpen] = useState(false)
+  const [newPatientName, setNewPatientName] = useState("")
   const [serviceType, setServiceType] = useState<ServiceType>("dental")
   const [reminderId, setReminderId] = useState<string | undefined>()
   const [inlineError, setInlineError] = useState<string | null>(null)
@@ -93,11 +94,11 @@ export function ReservationSchedulerDialog({
     setManualTime("")
     setDuration("")
     setNote("")
-    setPatientMode("existing")
     setSelectedPatientId("")
-    setName("")
-    setPhoneLocal("")
-    setDocumentNumber("")
+    setPatientSearch("")
+    setDebouncedPatientSearch("")
+    setCreatePatientOpen(false)
+    setNewPatientName("")
     setServiceType("dental")
     setReminderId(undefined)
     setInlineError(null)
@@ -137,20 +138,37 @@ export function ReservationSchedulerDialog({
   }, [dialogOpen, initialDay, month, t])
 
   useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedPatientSearch(patientSearch.trim()),
+      300
+    )
+    return () => window.clearTimeout(timer)
+  }, [patientSearch])
+
+  useEffect(() => {
     if (!dialogOpen) return
+    const controller = new AbortController()
     setPatientsLoading(true)
-    void fetch("/api/patients", { credentials: "include", cache: "no-store" })
+    void fetch(`/api/patients?search=${encodeURIComponent(debouncedPatientSearch)}`, {
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (response) => {
         const payload = (await response.json()) as { data?: PatientProfile[]; message?: string }
         if (!response.ok) throw new Error(payload.message ?? t("patients.loadFailed"))
         setPatients(payload.data ?? [])
       })
       .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return
         toast.error(error instanceof Error ? error.message : t("patients.loadFailed"))
         setPatients([])
       })
-      .finally(() => setPatientsLoading(false))
-  }, [dialogOpen, t])
+      .finally(() => {
+        if (!controller.signal.aborted) setPatientsLoading(false)
+      })
+    return () => controller.abort()
+  }, [debouncedPatientSearch, dialogOpen, t])
 
   useEffect(() => {
     if (!dialogOpen || !initialDay) return
@@ -218,31 +236,14 @@ export function ReservationSchedulerDialog({
       return
     }
 
-    let patient: NewReservationInput["patient"]
-    if (patientMode === "existing") {
-      if (!selectedPatientId) {
-        setInlineError(t("reservationForm.selectPatientFirst"))
-        return
-      }
-    } else {
-      if (name.trim().length < 3) {
-        setInlineError(t("scheduler.nameRequired"))
-        return
-      }
-      if (phoneLocal.trim() && !/^0\d{9}$/.test(phoneLocal.trim())) {
-        setInlineError(t("patients.phoneInvalid"))
-        return
-      }
-      patient = {
-        name: name.trim(),
-        phone: phoneLocal.trim() || null,
-        documentNumber: documentNumber.trim() || null,
-      }
+    if (!selectedPatientId) {
+      setInlineError(t("reservationForm.selectPatientFirst"))
+      return
     }
 
     try {
       await onSubmitReservation({
-        ...(patientMode === "existing" ? { patientId: selectedPatientId } : { patient }),
+        patientId: selectedPatientId,
         bookingType: "advance",
         serviceType,
         appointmentDate: manualPeriod.start.toISOString(),
@@ -265,7 +266,8 @@ export function ReservationSchedulerDialog({
   const todayKey = dateKey(new Date())
 
   return (
-    <Dialog
+    <>
+      <Dialog
       open={dialogOpen}
       onOpenChange={(next) => {
         setOpen(next)
@@ -439,58 +441,26 @@ export function ReservationSchedulerDialog({
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <UserRound className="h-4 w-4" /> {t("reservationForm.patient")}
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={patientMode === "existing" ? "default" : "outline"}
-                        onClick={() => setPatientMode("existing")}
-                      >
-                        {t("reservationForm.existing")}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={patientMode === "new" ? "default" : "outline"}
-                        onClick={() => setPatientMode("new")}
-                      >
-                        {t("reservationForm.newProfile")}
-                      </Button>
-                    </div>
-
-                    {patientMode === "existing" ? (
-                      <PatientSearch
-                        mode="select"
-                        patients={patients}
-                        selectedPatientId={selectedPatientId}
-                        onPatientSelect={setSelectedPatientId}
-                        loading={patientsLoading}
-                        disabled={isProcessing}
-                      />
-                    ) : (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <Input
-                          value={name}
-                          onChange={(event) => setName(event.target.value)}
-                          placeholder={`${t("patients.name")} *`}
-                        />
-                        <Input
-                          inputMode="numeric"
-                          autoComplete="tel-national"
-                          maxLength={10}
-                          value={phoneLocal}
-                          onChange={(event) => setPhoneLocal(event.target.value.replace(/\D/g, "").slice(0, 10))}
-                          placeholder={t("patients.phoneHint")}
-                        />
-                        <Input
-                          className="sm:col-span-2"
-                          maxLength={50}
-                          value={documentNumber}
-                          onChange={(event) => setDocumentNumber(event.target.value)}
-                          placeholder={t("patients.documentPlaceholder")}
-                        />
-                      </div>
-                    )}
+                    <PatientSearch
+                      mode="select"
+                      patients={patients}
+                      selectedPatientId={selectedPatientId}
+                      onPatientSelect={setSelectedPatientId}
+                      searchValue={patientSearch}
+                      onSearchValueChange={setPatientSearch}
+                      onCreatePatient={(typedName) => {
+                        setNewPatientName(typedName)
+                        setCreatePatientOpen(true)
+                      }}
+                      loading={
+                        patientsLoading ||
+                        patientSearch.trim() !== debouncedPatientSearch
+                      }
+                      disabled={isProcessing}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("reservationForm.patientSearchHint")}
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -529,6 +499,18 @@ export function ReservationSchedulerDialog({
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <CreatePatientDialog
+        open={createPatientOpen}
+        initialName={newPatientName}
+        onOpenChange={setCreatePatientOpen}
+        onCreated={(patient) => {
+          setPatients((current) => [patient, ...current.filter((item) => item.id !== patient.id)])
+          setSelectedPatientId(patient.id)
+          setPatientSearch(patient.name)
+          setInlineError(null)
+        }}
+      />
+    </>
   )
 }

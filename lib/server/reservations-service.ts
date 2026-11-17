@@ -301,6 +301,14 @@ function mapPatientProfileFromDb(
     note?: string | null
     treatmentNote?: string | null
     xrayImageBase64?: string | null
+    feeCents?: number | null
+    chargeCents?: number | null
+    paymentCents?: number | null
+    balanceAfterCents?: number | null
+    paymentStatus?: string | null
+    canalsCount?: number | null
+    teethTreated?: unknown
+    procedureSummary?: string | null
   }>
 },
   billing?: PatientBillingSummary
@@ -333,6 +341,17 @@ function mapPatientProfileFromDb(
       note: reservation.note ?? null,
       treatmentNote: reservation.treatmentNote ?? null,
       xrayImageBase64: reservation.xrayImageBase64 ?? null,
+      feeCents: reservation.feeCents ?? reservation.chargeCents ?? null,
+      chargeCents: reservation.chargeCents ?? reservation.feeCents ?? null,
+      paymentCents: reservation.paymentCents ?? null,
+      balanceAfterCents: reservation.balanceAfterCents ?? null,
+      paymentStatus:
+        reservation.paymentStatus && paymentStatusFromDb[reservation.paymentStatus]
+          ? paymentStatusFromDb[reservation.paymentStatus]
+          : null,
+      canalsCount: reservation.canalsCount ?? null,
+      teethTreated: normalizeTeethTreated(reservation.teethTreated),
+      procedureSummary: reservation.procedureSummary ?? null,
     })),
   },
     billing
@@ -1029,6 +1048,34 @@ export async function deleteReservation(reservationId: string): Promise<Reservat
   return toReservationsData()
 }
 
+function getLinkedReservationSelect() {
+  const baseSelect = {
+    id: true,
+    bookingType: true,
+    status: true,
+    appointmentDate: true,
+    endsAt: true,
+    serviceType: true,
+    hasArrived: true,
+    createdAt: true,
+    completedAt: true,
+    note: true,
+    treatmentNote: true,
+    feeCents: true,
+    ...(supportsChargeCents ? { chargeCents: true } : {}),
+    ...(supportsPaymentCents ? { paymentCents: true } : {}),
+    ...(supportsBalanceAfterCents ? { balanceAfterCents: true } : {}),
+    paymentStatus: true,
+    canalsCount: true,
+    teethTreated: true,
+    procedureSummary: true,
+  }
+
+  return (supportsReservationXrayImageBase64Field
+    ? { ...baseSelect, xrayImageBase64: true }
+    : baseSelect) as never
+}
+
 export async function listPatients(search?: string): Promise<PatientProfile[]> {
   const normalized = search?.trim()?.toLowerCase()
   const patients = await prisma.patientProfile.findMany({
@@ -1042,39 +1089,6 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
         }
       : undefined,
     orderBy: [{ name: "asc" }],
-    // Optimize: Only fetch reservations when needed (they're loaded on-demand in the UI)
-    include: {
-      reservations: {
-        select: (supportsReservationXrayImageBase64Field
-          ? {
-              id: true,
-              bookingType: true,
-              status: true,
-              appointmentDate: true,
-              endsAt: true,
-              serviceType: true,
-              hasArrived: true,
-              createdAt: true,
-              completedAt: true,
-              treatmentNote: true,
-              xrayImageBase64: true,
-            }
-          : {
-              id: true,
-              bookingType: true,
-              status: true,
-              appointmentDate: true,
-              endsAt: true,
-              serviceType: true,
-              hasArrived: true,
-              createdAt: true,
-              completedAt: true,
-              treatmentNote: true,
-            }) as never,
-        orderBy: [{ createdAt: "desc" }],
-        take: 50, // Limit to recent 50 reservations per patient for performance
-      },
-    },
   })
 
   const balances = new Map(
@@ -1090,6 +1104,33 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
       patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0],
       summaries.get(patient.id)
     )
+  )
+}
+
+export async function getPatientProfile(patientId: string): Promise<PatientProfile> {
+  const patient = await prisma.patientProfile.findUnique({
+    where: { id: patientId },
+    include: {
+      reservations: {
+        select: getLinkedReservationSelect(),
+        orderBy: [{ appointmentDate: "desc" }, { createdAt: "desc" }],
+      },
+    },
+  })
+
+  if (!patient) {
+    throw new Error("Patient not found")
+  }
+
+  const balance = (patient as { balanceDueCents?: number }).balanceDueCents ?? 0
+  const summaries = await getBillingSummariesForPatients(
+    [patient.id],
+    new Map([[patient.id, balance]])
+  )
+
+  return mapPatientProfileFromDb(
+    patient as unknown as Parameters<typeof mapPatientProfileFromDb>[0],
+    summaries.get(patient.id)
   )
 }
 
