@@ -24,7 +24,7 @@ export type PaymentStatusLabel = "unpaid" | "partial" | "paid"
 
 export interface Patient {
   id: string
-  patientId: string
+  patientId: string | null
   name: string
   phone: string | null
   documentNumber?: string | null
@@ -84,9 +84,16 @@ export interface NewPatientInput {
   xrayImageBase64?: string | null
 }
 
+export interface OneTimePatientInput {
+  name: string
+  phone?: string | null
+}
+
 export interface NewReservationInput {
   patientId?: string
   patient?: NewPatientInput
+  /** Lightweight contact details stored only on this reservation. */
+  oneTimePatient?: OneTimePatientInput
   bookingType: BookingType
   /**
    * Walk-in / emergency: calendar date for the visit record.
@@ -149,3 +156,8 @@ export interface PatientProfile {
     procedureSummary?: string | null
   }>
 }
+
+export type PatientSearchOption = Pick<
+  PatientProfile,
+  "id" | "name" | "phone" | "documentNumber"
+>

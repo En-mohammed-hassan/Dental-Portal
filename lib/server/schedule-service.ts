@@ -20,20 +20,40 @@ function clinicDateKey(date: Date): string {
 export async function getScheduleMonth(from: Date, to: Date) {
   const reservations = await prisma.reservation.findMany({
     where: { appointmentDate: { gte: from, lt: to } },
-    select: { appointmentDate: true },
+    select: { appointmentDate: true, serviceType: true },
     orderBy: { appointmentDate: "asc" },
   })
 
   const counts = new Map<string, number>()
+  const now = Date.now()
+  let upcomingDental = 0
+  let upcomingLaser = 0
+
   for (const reservation of reservations) {
     const key = clinicDateKey(reservation.appointmentDate)
     counts.set(key, (counts.get(key) ?? 0) + 1)
+
+    if (reservation.appointmentDate.getTime() > now) {
+      if (reservation.serviceType === "LASER") {
+        upcomingLaser += 1
+      } else {
+        upcomingDental += 1
+      }
+    }
   }
 
-  return [...counts.entries()].map(([date, reservationCount]) => ({
-    date,
-    reservationCount,
-  }))
+  return {
+    days: [...counts.entries()].map(([date, reservationCount]) => ({
+      date,
+      reservationCount,
+    })),
+    summary: {
+      totalReservations: reservations.length,
+      upcomingReservations: upcomingDental + upcomingLaser,
+      upcomingDental,
+      upcomingLaser,
+    },
+  }
 }
 
 export async function getScheduleDay(from: Date, to: Date) {
@@ -43,6 +63,8 @@ export async function getScheduleDay(from: Date, to: Date) {
     select: {
       id: true,
       patientId: true,
+      oneTimeName: true,
+      oneTimePhone: true,
       bookingType: true,
       status: true,
       hasArrived: true,
@@ -64,9 +86,9 @@ export async function getScheduleDay(from: Date, to: Date) {
   return rows.map((row) => ({
     id: row.id,
     patientId: row.patientId,
-    patientName: row.patient.name,
-    patientPhone: row.patient.phone,
-    patientDocumentNumber: row.patient.documentNumber,
+    patientName: row.patient?.name ?? row.oneTimeName ?? "One-time patient",
+    patientPhone: row.patient?.phone ?? row.oneTimePhone ?? null,
+    patientDocumentNumber: row.patient?.documentNumber ?? null,
     bookingType: row.bookingType.toLowerCase().replace("_", "-"),
     status: row.status.toLowerCase(),
     hasArrived: row.hasArrived,

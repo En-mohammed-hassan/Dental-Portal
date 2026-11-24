@@ -36,6 +36,20 @@ type MonthCount = {
   reservationCount: number
 }
 
+type MonthSummary = {
+  totalReservations: number
+  upcomingReservations: number
+  upcomingDental: number
+  upcomingLaser: number
+}
+
+const EMPTY_MONTH_SUMMARY: MonthSummary = {
+  totalReservations: 0,
+  upcomingReservations: 0,
+  upcomingDental: 0,
+  upcomingLaser: 0,
+}
+
 type Props = {
   revision?: string
   onAddReservation?: (day: Date) => void
@@ -78,6 +92,7 @@ export function ReservationCalendarView({
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = useState(() => new Date())
   const [monthCounts, setMonthCounts] = useState<Record<string, number>>({})
+  const [monthSummary, setMonthSummary] = useState<MonthSummary>(EMPTY_MONTH_SUMMARY)
   const [appointments, setAppointments] = useState<ScheduleReservation[]>([])
   const [selectedAppointment, setSelectedAppointment] = useState<ScheduleReservation | null>(null)
   const [monthLoading, setMonthLoading] = useState(false)
@@ -106,17 +121,23 @@ export function ReservationCalendarView({
       { credentials: "include", cache: "no-store", signal: controller.signal }
     )
       .then(async (response) => {
-        const payload = (await response.json()) as { days?: MonthCount[]; message?: string }
+        const payload = (await response.json()) as {
+          days?: MonthCount[]
+          summary?: MonthSummary
+          message?: string
+        }
         if (!response.ok) {
           throw new Error(payload.message ?? t("scheduler.loadMonthFailed"))
         }
         setMonthCounts(
           Object.fromEntries((payload.days ?? []).map((day) => [day.date, day.reservationCount]))
         )
+        setMonthSummary(payload.summary ?? EMPTY_MONTH_SUMMARY)
       })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return
         setMonthCounts({})
+        setMonthSummary(EMPTY_MONTH_SUMMARY)
         setMonthError(error instanceof Error ? error.message : t("scheduler.loadMonthFailed"))
       })
       .finally(() => {
@@ -235,9 +256,12 @@ export function ReservationCalendarView({
               <p className="font-semibold capitalize">
                 {new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(month)}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {t("reservations.monthCount", {
-                  count: Object.values(monthCounts).reduce((sum, count) => sum + count, 0),
+              <p className="mx-auto mt-0.5 max-w-72 text-xs leading-relaxed text-muted-foreground">
+                {t("reservations.monthUpcomingBreakdown", {
+                  laser: monthSummary.upcomingLaser,
+                  dental: monthSummary.upcomingDental,
+                  upcoming: monthSummary.upcomingReservations,
+                  total: monthSummary.totalReservations,
                 })}
               </p>
             </div>

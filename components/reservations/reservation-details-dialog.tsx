@@ -39,7 +39,7 @@ import { serviceTypeBadgeClass } from "@/utils/patient"
 
 export type ScheduleReservation = {
   id: string
-  patientId: string
+  patientId: string | null
   patientName: string
   patientPhone: string | null
   patientDocumentNumber: string | null

@@ -23,9 +23,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "Invalid month range" }, { status: 400 })
   }
 
-  const days = await getScheduleMonth(from, to)
+  const { days, summary } = await getScheduleMonth(from, to)
   return NextResponse.json(
-    { days },
+    { days, summary },
     { headers: { "Cache-Control": "no-store, max-age=0" } }
   )
 }

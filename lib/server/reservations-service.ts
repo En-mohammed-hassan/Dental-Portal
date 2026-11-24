@@ -9,6 +9,7 @@ import {
   type UpdateReservationInput,
   type Patient,
   type PatientProfile,
+  type PatientSearchOption,
   type BloodType as AppBloodType,
   type BookingType as AppBookingType,
   type ReservationStatus as AppReservationStatus,
@@ -204,9 +205,16 @@ const patientProfilePayloadSchema = z.object({
     .optional(),
 })
 
+const oneTimePatientPayloadSchema = z.object({
+  name: z.string().trim().min(3).max(80),
+  phone: optionalPhoneSchema,
+})
+
 function mapReservationFromDb(patient: {
   id: string
-  patientId: string
+  patientId: string | null
+  oneTimeName?: string | null
+  oneTimePhone?: string | null
   bookingType: string
   appointmentDate: Date
   endsAt: Date
@@ -235,17 +243,17 @@ function mapReservationFromDb(patient: {
     balanceDueCents?: number
     totalChargedCents?: number
     totalPaidCents?: number
-  }
+  } | null
 }): Patient {
   const ps = patient.paymentStatus
   return {
     id: patient.id,
     patientId: patient.patientId,
-    name: patient.patient.name,
-    phone: patient.patient.phone,
-    documentNumber: patient.patient.documentNumber ?? null,
-    age: patient.patient.age,
-    bloodType: patient.patient.bloodType
+    name: patient.patient?.name ?? patient.oneTimeName ?? "One-time patient",
+    phone: patient.patient?.phone ?? patient.oneTimePhone ?? null,
+    documentNumber: patient.patient?.documentNumber ?? null,
+    age: patient.patient?.age ?? null,
+    bloodType: patient.patient?.bloodType
       ? bloodTypeFromDb[patient.patient.bloodType] ?? null
       : null,
     bookingType: bookingTypeFromDb[patient.bookingType],
@@ -266,7 +274,7 @@ function mapReservationFromDb(patient: {
     chargeCents: patient.chargeCents ?? patient.feeCents ?? null,
     paymentCents: patient.paymentCents ?? null,
     balanceAfterCents: patient.balanceAfterCents ?? null,
-    balanceDueCents: patient.patient.balanceDueCents ?? 0,
+    balanceDueCents: patient.patient?.balanceDueCents ?? 0,
     totalChargedCents: 0,
     totalPaidCents: 0,
     paymentStatus: ps && paymentStatusFromDb[ps] ? paymentStatusFromDb[ps] : null,
@@ -396,6 +404,8 @@ const getPatientSelect = () => ({
 const getReservationSelect = () => ({
   id: true,
   patientId: true,
+  oneTimeName: true,
+  oneTimePhone: true,
   bookingType: true,
   appointmentDate: true,
   endsAt: true,
@@ -422,15 +432,19 @@ const getReservationSelect = () => ({
 
 async function enrichPatientsWithBilling(patients: Patient[]): Promise<Patient[]> {
   if (patients.length === 0) return patients
+  const linkedPatients = patients.filter(
+    (patient): patient is Patient & { patientId: string } => Boolean(patient.patientId)
+  )
+  if (linkedPatients.length === 0) return patients
   const balances = new Map(
-    patients.map((p) => [p.patientId, p.balanceDueCents ?? 0] as const)
+    linkedPatients.map((p) => [p.patientId, p.balanceDueCents ?? 0] as const)
   )
   const summaries = await getBillingSummariesForPatients(
-    patients.map((p) => p.patientId),
+    linkedPatients.map((p) => p.patientId),
     balances
   )
   return patients.map((p) => {
-    const summary = summaries.get(p.patientId)
+    const summary = p.patientId ? summaries.get(p.patientId) : undefined
     if (!summary) return p
     return {
       ...p,
@@ -521,6 +535,8 @@ export async function listTreatmentHistoryPage(options: {
     where.OR = [
       { treatmentNote: { contains: q, mode: "insensitive" } },
       { procedureSummary: { contains: q, mode: "insensitive" } },
+      { oneTimeName: { contains: q, mode: "insensitive" } },
+      { oneTimePhone: { contains: q } },
       { patient: { name: { contains: q, mode: "insensitive" } } },
       { patient: { phone: { contains: q } } },
     ]
@@ -579,8 +595,14 @@ export async function listReservationsForPatient(patientProfileId: string): Prom
 }
 
 export async function addReservation(payload: NewReservationInput): Promise<ReservationsData> {
-  if (!payload.patientId && !payload.patient) {
+  const identityCount = [payload.patientId, payload.patient, payload.oneTimePatient].filter(
+    Boolean
+  ).length
+  if (identityCount === 0) {
     throw new Error("Please select an existing patient or create a new one")
+  }
+  if (identityCount > 1) {
+    throw new Error("Choose only one patient option")
   }
 
   const bookingType = bookingTypeToDb[payload.bookingType]
@@ -647,6 +669,22 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
   if (parsedPatient && !parsedPatient.success) {
     throw new Error(parsedPatient.error.issues[0]?.message ?? "Invalid patient data")
   }
+  const parsedOneTimePatient = payload.oneTimePatient
+    ? oneTimePatientPayloadSchema.safeParse(payload.oneTimePatient)
+    : null
+  if (parsedOneTimePatient && !parsedOneTimePatient.success) {
+    throw new Error(
+      parsedOneTimePatient.error.issues[0]?.message ?? "Invalid one-time patient data"
+    )
+  }
+  const oneTimePatient = parsedOneTimePatient?.success
+    ? {
+        name: parsedOneTimePatient.data.name,
+        phone: parsedOneTimePatient.data.phone
+          ? normalizePhoneOrThrow(parsedOneTimePatient.data.phone)
+          : null,
+      }
+    : null
   const reservationNote = payload.note?.trim() || null
   if (reservationNote && reservationNote.length > 500) {
     throw new Error("Reservation note must be 500 characters or fewer")
@@ -701,13 +739,18 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
         const existingPatient = patientId
           ? await tx.patientProfile.findUnique({ where: { id: patientId } })
           : null
-        if (!existingPatient) {
+        if (!existingPatient && !oneTimePatient) {
           throw new Error("Selected patient was not found")
+        }
+        if (payload.reminderId && !existingPatient) {
+          throw new Error("A reminder reservation must use a saved patient")
         }
 
         const reservation = await tx.reservation.create({
           data: {
-            patientId: existingPatient.id,
+            patientId: existingPatient?.id ?? null,
+            oneTimeName: oneTimePatient?.name ?? null,
+            oneTimePhone: oneTimePatient?.phone ?? null,
             bookingType: bookingType as never,
             appointmentDate: appointmentDateTime,
             endsAt,
@@ -723,7 +766,7 @@ export async function addReservation(payload: NewReservationInput): Promise<Rese
           const resolved = await tx.patientReminder.updateMany({
             where: {
               id: payload.reminderId,
-              patientId: existingPatient.id,
+              patientId: existingPatient!.id,
               status: "PENDING",
             },
             data: {
@@ -883,10 +926,12 @@ export async function finishTreatment(payload: {
     procedureSummary,
   }
 
-  if (supportsPatientBalance) {
+  const linkedPatientId = currentReservation.patientId
+
+  if (supportsPatientBalance && linkedPatientId) {
     await prisma.$transaction(async (tx) => {
       const balanceResult = await applyPatientBalanceOnFinish(tx, {
-        patientId: currentReservation.patientId,
+        patientId: linkedPatientId,
         reservationId: currentReservation.id,
         chargeCents,
         paymentCents,
@@ -903,12 +948,13 @@ export async function finishTreatment(payload: {
       })
     })
   } else if (
+    linkedPatientId &&
     supportsBalanceDueCents &&
     ((chargeCents ?? 0) > 0 || (paymentCents ?? 0) > 0)
   ) {
     await prisma.$transaction(async (tx) => {
       const profile = await tx.patientProfile.findUniqueOrThrow({
-        where: { id: currentReservation.patientId },
+        where: { id: linkedPatientId },
         select: { balanceDueCents: true },
       })
       let running = profile.balanceDueCents ?? 0
@@ -916,7 +962,7 @@ export async function finishTreatment(payload: {
       if (paymentCents) running = Math.max(0, running - paymentCents)
 
       await tx.patientProfile.update({
-        where: { id: currentReservation.patientId },
+        where: { id: linkedPatientId },
         data: { balanceDueCents: running },
       })
 
@@ -935,10 +981,12 @@ export async function finishTreatment(payload: {
     })
   }
 
-  const patientRow = await prisma.patientProfile.findUnique({
-    where: { id: currentReservation.patientId },
-    select: { name: true, phone: true },
-  })
+  const patientRow = linkedPatientId
+    ? await prisma.patientProfile.findUnique({
+        where: { id: linkedPatientId },
+        select: { name: true, phone: true },
+      })
+    : null
   const settings = await prisma.siteSettings.findUnique({
     where: { id: "default" },
     select: { clinicName: true },
@@ -1105,6 +1153,18 @@ export async function listPatients(search?: string): Promise<PatientProfile[]> {
       summaries.get(patient.id)
     )
   )
+}
+
+export async function listPatientSearchOptions(): Promise<PatientSearchOption[]> {
+  return prisma.patientProfile.findMany({
+    orderBy: [{ name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      documentNumber: true,
+    },
+  })
 }
 
 export async function getPatientProfile(patientId: string): Promise<PatientProfile> {

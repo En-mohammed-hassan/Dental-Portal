@@ -4,6 +4,7 @@ import { addCorsHeaders, handleCorsPreflight } from "@/lib/api/cors"
 import { requireStaffApi } from "@/lib/api/require-staff"
 import {
   createPatientProfile,
+  listPatientSearchOptions,
   listPatients,
 } from "@/lib/server/reservations-service"
 
@@ -22,7 +23,10 @@ export async function GET(request: Request) {
   }
   const url = new URL(request.url)
   const search = url.searchParams.get("search") ?? undefined
-  const data = await listPatients(search)
+  const data =
+    url.searchParams.get("view") === "search"
+      ? await listPatientSearchOptions()
+      : await listPatients(search)
   const response = NextResponse.json(
     { data },
     {

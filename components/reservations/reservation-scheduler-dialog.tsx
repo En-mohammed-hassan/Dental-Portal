@@ -40,11 +40,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import {
   type NewReservationInput,
-  type PatientProfile,
+  type OneTimePatientInput,
+  type PatientSearchOption,
   type ServiceType,
 } from "@/types/patient"
 
 type MonthCount = { date: string; reservationCount: number }
+
+const PATIENT_CACHE_REFRESH_MS = 2 * 60 * 1000
+const MAX_PATIENT_SEARCH_RESULTS = 50
+const ONE_TIME_PATIENT_ID = "__one-time-reservation-patient__"
 
 type Props = {
   onSubmitReservation: (payload: NewReservationInput) => Promise<void> | void
@@ -78,11 +83,11 @@ export function ReservationSchedulerDialog({
   const [manualTime, setManualTime] = useState("")
   const [duration, setDuration] = useState("")
   const [note, setNote] = useState("")
-  const [patients, setPatients] = useState<PatientProfile[]>([])
+  const [patients, setPatients] = useState<PatientSearchOption[]>([])
   const [patientsLoading, setPatientsLoading] = useState(false)
   const [selectedPatientId, setSelectedPatientId] = useState("")
+  const [oneTimePatient, setOneTimePatient] = useState<OneTimePatientInput | null>(null)
   const [patientSearch, setPatientSearch] = useState("")
-  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState("")
   const [createPatientOpen, setCreatePatientOpen] = useState(false)
   const [newPatientName, setNewPatientName] = useState("")
   const [serviceType, setServiceType] = useState<ServiceType>("dental")
@@ -95,8 +100,8 @@ export function ReservationSchedulerDialog({
     setDuration("")
     setNote("")
     setSelectedPatientId("")
+    setOneTimePatient(null)
     setPatientSearch("")
-    setDebouncedPatientSearch("")
     setCreatePatientOpen(false)
     setNewPatientName("")
     setServiceType("dental")
@@ -138,37 +143,48 @@ export function ReservationSchedulerDialog({
   }, [dialogOpen, initialDay, month, t])
 
   useEffect(() => {
-    const timer = window.setTimeout(
-      () => setDebouncedPatientSearch(patientSearch.trim()),
-      300
-    )
-    return () => window.clearTimeout(timer)
-  }, [patientSearch])
-
-  useEffect(() => {
-    if (!dialogOpen) return
     const controller = new AbortController()
-    setPatientsLoading(true)
-    void fetch(`/api/patients?search=${encodeURIComponent(debouncedPatientSearch)}`, {
-      credentials: "include",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const payload = (await response.json()) as { data?: PatientProfile[]; message?: string }
+    let requestInFlight = false
+
+    const refreshPatientCache = async (showLoading: boolean) => {
+      if (requestInFlight) return
+      requestInFlight = true
+      if (showLoading) setPatientsLoading(true)
+
+      try {
+        const response = await fetch("/api/patients?view=search", {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const payload = (await response.json()) as {
+          data?: PatientSearchOption[]
+          message?: string
+        }
         if (!response.ok) throw new Error(payload.message ?? t("patients.loadFailed"))
-        setPatients(payload.data ?? [])
-      })
-      .catch((error) => {
+        if (!controller.signal.aborted) setPatients(payload.data ?? [])
+      } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return
-        toast.error(error instanceof Error ? error.message : t("patients.loadFailed"))
-        setPatients([])
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setPatientsLoading(false)
-      })
-    return () => controller.abort()
-  }, [debouncedPatientSearch, dialogOpen, t])
+        if (showLoading) {
+          toast.error(error instanceof Error ? error.message : t("patients.loadFailed"))
+        }
+      } finally {
+        requestInFlight = false
+        if (showLoading && !controller.signal.aborted) setPatientsLoading(false)
+      }
+    }
+
+    void refreshPatientCache(true)
+    const refreshTimer = window.setInterval(
+      () => void refreshPatientCache(false),
+      PATIENT_CACHE_REFRESH_MS
+    )
+
+    return () => {
+      window.clearInterval(refreshTimer)
+      controller.abort()
+    }
+  }, [t])
 
   useEffect(() => {
     if (!dialogOpen || !initialDay) return
@@ -185,6 +201,40 @@ export function ReservationSchedulerDialog({
     for (let day = first; day < next; day = addDays(day, 1)) days.push(day)
     return { days, leading: getDay(first) }
   }, [month])
+
+  const visiblePatients = useMemo(() => {
+    const normalizedQuery = patientSearch.trim().toLocaleLowerCase()
+    const matches = normalizedQuery
+      ? patients.filter((patient) =>
+          [patient.name, patient.phone, patient.documentNumber].some((value) =>
+            value?.toLocaleLowerCase().includes(normalizedQuery)
+          )
+        )
+      : patients
+
+    const orderedMatches = normalizedQuery
+      ? [...matches].sort((left, right) => {
+          const leftExact = left.name.trim().toLocaleLowerCase() === normalizedQuery
+          const rightExact = right.name.trim().toLocaleLowerCase() === normalizedQuery
+          return Number(rightExact) - Number(leftExact)
+        })
+      : matches
+    const visible = orderedMatches.slice(0, MAX_PATIENT_SEARCH_RESULTS)
+    const selectedPatient =
+      selectedPatientId === ONE_TIME_PATIENT_ID && oneTimePatient
+        ? {
+            id: ONE_TIME_PATIENT_ID,
+            name: oneTimePatient.name,
+            phone: oneTimePatient.phone ?? null,
+            documentNumber: null,
+          }
+        : patients.find((patient) => patient.id === selectedPatientId)
+
+    if (selectedPatient && !visible.some((patient) => patient.id === selectedPatient.id)) {
+      return [selectedPatient, ...visible].slice(0, MAX_PATIENT_SEARCH_RESULTS)
+    }
+    return visible
+  }, [oneTimePatient, patientSearch, patients, selectedPatientId])
 
   const parsedDuration = useMemo(() => {
     if (!duration.trim()) return null
@@ -236,14 +286,19 @@ export function ReservationSchedulerDialog({
       return
     }
 
-    if (!selectedPatientId) {
+    if (
+      !selectedPatientId ||
+      (selectedPatientId === ONE_TIME_PATIENT_ID && !oneTimePatient)
+    ) {
       setInlineError(t("reservationForm.selectPatientFirst"))
       return
     }
 
     try {
       await onSubmitReservation({
-        patientId: selectedPatientId,
+        ...(oneTimePatient
+          ? { oneTimePatient }
+          : { patientId: selectedPatientId }),
         bookingType: "advance",
         serviceType,
         appointmentDate: manualPeriod.start.toISOString(),
@@ -443,19 +498,19 @@ export function ReservationSchedulerDialog({
                     </div>
                     <PatientSearch
                       mode="select"
-                      patients={patients}
+                      patients={visiblePatients}
                       selectedPatientId={selectedPatientId}
-                      onPatientSelect={setSelectedPatientId}
+                      onPatientSelect={(patientId) => {
+                        setSelectedPatientId(patientId)
+                        if (patientId !== ONE_TIME_PATIENT_ID) setOneTimePatient(null)
+                      }}
                       searchValue={patientSearch}
                       onSearchValueChange={setPatientSearch}
                       onCreatePatient={(typedName) => {
                         setNewPatientName(typedName)
                         setCreatePatientOpen(true)
                       }}
-                      loading={
-                        patientsLoading ||
-                        patientSearch.trim() !== debouncedPatientSearch
-                      }
+                      loading={patientsLoading}
                       disabled={isProcessing}
                     />
                     <p className="text-xs text-muted-foreground">
@@ -506,8 +561,16 @@ export function ReservationSchedulerDialog({
         onOpenChange={setCreatePatientOpen}
         onCreated={(patient) => {
           setPatients((current) => [patient, ...current.filter((item) => item.id !== patient.id)])
+          setOneTimePatient(null)
           setSelectedPatientId(patient.id)
           setPatientSearch(patient.name)
+          setInlineError(null)
+        }}
+        onOneTimeSelected={(patient) => {
+          setOneTimePatient(patient)
+          setSelectedPatientId(ONE_TIME_PATIENT_ID)
+          setPatientSearch(patient.name)
+          setReminderId(undefined)
           setInlineError(null)
         }}
       />

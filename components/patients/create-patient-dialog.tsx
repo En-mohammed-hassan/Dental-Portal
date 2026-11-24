@@ -22,7 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { BLOOD_TYPES, type BloodType, type PatientProfile } from "@/types/patient"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  BLOOD_TYPES,
+  type BloodType,
+  type OneTimePatientInput,
+  type PatientProfile,
+} from "@/types/patient"
 
 const MAX_XRAY_SIZE_BYTES = 2 * 1024 * 1024
 
@@ -31,6 +37,7 @@ type Props = {
   initialName: string
   onOpenChange: (open: boolean) => void
   onCreated: (patient: PatientProfile) => void
+  onOneTimeSelected: (patient: OneTimePatientInput) => void
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -45,8 +52,15 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated }: Props) {
+export function CreatePatientDialog({
+  open,
+  initialName,
+  onOpenChange,
+  onCreated,
+  onOneTimeSelected,
+}: Props) {
   const { t } = useTranslation(["admin", "common"])
+  const [mode, setMode] = useState<"saved" | "one-time">("saved")
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [documentNumber, setDocumentNumber] = useState("")
@@ -65,6 +79,7 @@ export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated
     setBloodType(null)
     setXrayImageBase64("")
     setError(null)
+    setMode("saved")
   }, [initialName, open])
 
   const handleXrayUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -143,6 +158,27 @@ export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated
     }
   }
 
+  const submitOneTime = () => {
+    setError(null)
+    const normalizedName = name.trim()
+    const normalizedPhone = phone.trim()
+
+    if (normalizedName.length < 3) {
+      setError(t("scheduler.nameRequired"))
+      return
+    }
+    if (normalizedPhone && !/^0\d{9}$/.test(normalizedPhone)) {
+      setError(t("patients.phoneInvalid"))
+      return
+    }
+
+    onOneTimeSelected({
+      name: normalizedName,
+      phone: normalizedPhone || null,
+    })
+    onOpenChange(false)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-lg">
@@ -151,35 +187,52 @@ export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated
           <DialogDescription>{t("reservationForm.addPatientDescription")}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="reservation-new-patient-name">{t("patients.name")} *</Label>
-            <Input
-              id="reservation-new-patient-name"
-              value={name}
-              maxLength={80}
-              disabled={saving}
-              autoFocus
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="reservation-new-patient-phone">
-              {t("patients.phone")} ({t("scheduler.optional")})
-            </Label>
-            <Input
-              id="reservation-new-patient-phone"
-              inputMode="numeric"
-              autoComplete="tel-national"
-              maxLength={10}
-              placeholder="09xxxxxxxx"
-              value={phone}
-              disabled={saving}
-              onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))}
-            />
-            <p className="text-xs text-muted-foreground">{t("patients.phoneHint")}</p>
-          </div>
-          <div className="space-y-1">
+        <Tabs
+          value={mode}
+          onValueChange={(value) => {
+            setMode(value as "saved" | "one-time")
+            setError(null)
+          }}
+        >
+          <TabsList className="grid h-11 w-full grid-cols-2">
+            <TabsTrigger value="saved">{t("reservationForm.addAsNew")}</TabsTrigger>
+            <TabsTrigger value="one-time">{t("reservationForm.addOnce")}</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="saved" className="space-y-3 pt-2">
+            <p className="text-sm text-muted-foreground">
+              {t("reservationForm.addAsNewDescription")}
+            </p>
+            <div className="space-y-1">
+              <Label htmlFor="reservation-new-patient-name">{t("patients.name")} *</Label>
+              <Input
+                id="reservation-new-patient-name"
+                value={name}
+                maxLength={80}
+                disabled={saving}
+                autoFocus
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="reservation-new-patient-phone">
+                {t("patients.phone")} ({t("scheduler.optional")})
+              </Label>
+              <Input
+                id="reservation-new-patient-phone"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                maxLength={10}
+                placeholder="09xxxxxxxx"
+                value={phone}
+                disabled={saving}
+                onChange={(event) =>
+                  setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))
+                }
+              />
+              <p className="text-xs text-muted-foreground">{t("patients.phoneHint")}</p>
+            </div>
+            <div className="space-y-1">
             <Label htmlFor="reservation-new-patient-document">
               {t("patients.documentNumber")} ({t("scheduler.optional")})
             </Label>
@@ -191,8 +244,8 @@ export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated
               disabled={saving}
               onChange={(event) => setDocumentNumber(event.target.value)}
             />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="reservation-new-patient-age">
                 {t("patients.age")} ({t("scheduler.optional")})
@@ -231,8 +284,8 @@ export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="space-y-2">
+            </div>
+            <div className="space-y-2">
             <Label htmlFor="reservation-new-patient-xray">{t("patients.xrayOptional")}</Label>
             <input
               id="reservation-new-patient-xray"
@@ -263,18 +316,63 @@ export function CreatePatientDialog({ open, initialName, onOpenChange, onCreated
             ) : (
               <p className="text-xs text-muted-foreground">{t("patients.noImage")}</p>
             )}
-          </div>
+            </div>
 
-          {error && (
-            <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
+            {error && (
+              <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <LoadingButton className="w-full" loading={saving} onClick={() => void submit()}>
+              {t("patients.addPatientBtn")}
+            </LoadingButton>
+          </TabsContent>
+
+          <TabsContent value="one-time" className="space-y-3 pt-2">
+            <p className="text-sm text-muted-foreground">
+              {t("reservationForm.addOnceDescription")}
             </p>
-          )}
+            <div className="space-y-1">
+              <Label htmlFor="reservation-one-time-name">{t("patients.name")} *</Label>
+              <Input
+                id="reservation-one-time-name"
+                value={name}
+                maxLength={80}
+                disabled={saving}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="reservation-one-time-phone">
+                {t("patients.phone")} ({t("scheduler.optional")})
+              </Label>
+              <Input
+                id="reservation-one-time-phone"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                maxLength={10}
+                placeholder="09xxxxxxxx"
+                value={phone}
+                disabled={saving}
+                onChange={(event) =>
+                  setPhone(event.target.value.replace(/\D/g, "").slice(0, 10))
+                }
+              />
+              <p className="text-xs text-muted-foreground">{t("patients.phoneHint")}</p>
+            </div>
 
-          <LoadingButton className="w-full" loading={saving} onClick={() => void submit()}>
-            {t("patients.addPatientBtn")}
-          </LoadingButton>
-        </div>
+            {error && (
+              <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+
+            <Button className="w-full" type="button" onClick={submitOneTime}>
+              {t("reservationForm.useOnce")}
+            </Button>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   )

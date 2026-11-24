@@ -58,6 +58,7 @@ async function aggregateFromReservations(patientIds: string[]): Promise<Map<stri
     })
 
     for (const row of rows) {
+      if (!row.patientId) continue
       const charge = row.chargeCents ?? row.feeCents ?? 0
       const payment = row.paymentCents ?? 0
       addTotals(map, row.patientId, charge, payment)

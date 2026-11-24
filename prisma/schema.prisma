@@ -128,7 +128,10 @@ model BookingSlot {
 
 model Reservation {
   id                String               @id @default(cuid())
-  patientId         String
+  patientId         String?
+  /// Contact details for a reservation-only patient who is not saved in Patient Management.
+  oneTimeName       String?
+  oneTimePhone      String?
   bookingType       BookingType
   appointmentDate   DateTime
   endsAt            DateTime
@@ -156,7 +159,7 @@ model Reservation {
   /// Short procedure label, e.g. "RCT", "Composite filling"
   procedureSummary  String?
   createdAt         DateTime             @default(now())
-  patient           PatientProfile       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient           PatientProfile?      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   slot              BookingSlot?         @relation(fields: [slotId], references: [id], onDelete: SetNull)
   ledgerEntries     PatientLedgerEntry[]
   reminder          PatientReminder?

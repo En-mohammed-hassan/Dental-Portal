@@ -15,11 +15,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import { type PatientProfile } from "@/types/patient"
+import { type PatientSearchOption } from "@/types/patient"
 
 type PatientSearchProps = {
   mode: "filter" | "select"
-  patients?: PatientProfile[]
+  patients?: PatientSearchOption[]
   value?: string
   onValueChange?: (value: string) => void
   selectedPatientId?: string
@@ -32,7 +32,7 @@ type PatientSearchProps = {
   className?: string
 }
 
-function patientSearchValue(patient: PatientProfile): string {
+function patientSearchValue(patient: PatientSearchOption): string {
   return [patient.name, patient.phone, patient.documentNumber, patient.id]
     .filter(Boolean)
     .join(" ")

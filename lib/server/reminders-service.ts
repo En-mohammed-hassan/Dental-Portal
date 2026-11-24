@@ -91,6 +91,7 @@ export async function listLaserPatientsForDay(payload: unknown) {
     where: {
       appointmentDate: { gte: from, lt: to },
       serviceType: "LASER",
+      patientId: { not: null },
     },
     orderBy: [{ appointmentDate: "asc" }, { createdAt: "asc" }],
     select: {
@@ -113,6 +114,7 @@ export async function listLaserPatientsForDay(payload: unknown) {
 
   const patients = new Map<string, (typeof rows)[number]>()
   for (const row of rows) {
+    if (!row.patientId || !row.patient) continue
     const current = patients.get(row.patientId)
     const rowHasReminder =
       row.reminder?.status === "PENDING" &&
@@ -125,20 +127,23 @@ export async function listLaserPatientsForDay(payload: unknown) {
     }
   }
 
-  return [...patients.values()].map((row) => ({
-    reservationId: row.id,
-    patientId: row.patientId,
-    patientName: row.patient.name,
-    patientPhone: row.patient.phone,
-    startsAt: row.appointmentDate.toISOString(),
-    endsAt: row.endsAt.toISOString(),
-    status: row.status.toLowerCase(),
-    reminderId:
-      row.reminder?.status === "PENDING" &&
-      row.reminder.dueOn.getTime() === reminderDueOn.getTime()
-        ? row.reminder.id
-        : null,
-  }))
+  return [...patients.values()].flatMap((row) => {
+    if (!row.patientId || !row.patient) return []
+    return [{
+      reservationId: row.id,
+      patientId: row.patientId,
+      patientName: row.patient.name,
+      patientPhone: row.patient.phone,
+      startsAt: row.appointmentDate.toISOString(),
+      endsAt: row.endsAt.toISOString(),
+      status: row.status.toLowerCase(),
+      reminderId:
+        row.reminder?.status === "PENDING" &&
+        row.reminder.dueOn.getTime() === reminderDueOn.getTime()
+          ? row.reminder.id
+          : null,
+    }]
+  })
 }
 
 const syncLaserRemindersSchema = laserDaySchema.extend({
@@ -154,6 +159,7 @@ export async function syncLaserPatientReminders(payload: unknown) {
     where: {
       appointmentDate: { gte: from, lt: to },
       serviceType: "LASER",
+      patientId: { not: null },
     },
     orderBy: [{ appointmentDate: "asc" }, { createdAt: "asc" }],
     select: { id: true, patientId: true },
@@ -161,6 +167,7 @@ export async function syncLaserPatientReminders(payload: unknown) {
 
   const reservationsByPatient = new Map<string, string[]>()
   for (const row of rows) {
+    if (!row.patientId) continue
     const current = reservationsByPatient.get(row.patientId) ?? []
     current.push(row.id)
     reservationsByPatient.set(row.patientId, current)
